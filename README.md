@@ -10,5 +10,7 @@ Env通过仿真进行环境采样<br/>
 执行action，调用Learner的update更新参数<br/>
 leaner通过fire调用action的load_mode,更新action参数<br/>
 
-
+# 运行
+pip install ray
+python main.py
 
