@@ -10,6 +10,7 @@ import example.dqn.config as config
 from core.wise_rl  import WiseRL
 from core.action import Action
 
+
 class ActionActor(Action):
     def __init__(self):
         super().__init__()
@@ -18,6 +19,7 @@ class ActionActor(Action):
 
     def updateModel(self, x):
         self.eval_net.load_state_dict(x)
+
 
     def choseAction(self, x):
         x = torch.unsqueeze(torch.FloatTensor(x), 0) # add 1 dimension to input state x

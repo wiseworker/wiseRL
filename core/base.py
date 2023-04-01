@@ -1,5 +1,5 @@
 import ray
-
+from core.remote import Remote
 class Base(object):
     def __init__(self):
         self.registre = None
@@ -19,9 +19,13 @@ class Base(object):
 
     def getActor(self, name):
         actor =ray.get(self.registre.getActor.remote(name))
-        return actor
+        remoteActor = self._createRemoteActor(actor)
+        return remoteActor
 
     def getAllActors(self, name):
         actors =ray.get(self.registre.getActorsByName.remote(name))
         return actors
     
+    def _createRemoteActor(self,actor):
+        remoteActor = Remote(actor)
+        return remoteActor

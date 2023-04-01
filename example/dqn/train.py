@@ -19,7 +19,7 @@ cfg = [
     {
         "name": "env",
         "actor": EnvActor,
-        "num": 8
+        "num": 1
     },
 
 ]
