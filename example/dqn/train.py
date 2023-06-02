@@ -1,15 +1,9 @@
 from example.dqn.env_actor import EnvActor
-from example.dqn.action_actor import ActionActor
 from example.dqn.learner_actor import LearnerActor
-from core.wise_rl  import WiseRL
+from wiseRL.core.wise_rl  import WiseRL
 
 import config
 cfg = [
-    {
-        "name": "action",
-        "actor": ActionActor,
-        "num": 1
-    },
     {
         "name": "learner",
         "actor": LearnerActor,
@@ -19,7 +13,7 @@ cfg = [
     {
         "name": "env",
         "actor": EnvActor,
-        "num": 1
+        "num": 8
     },
 
 ]

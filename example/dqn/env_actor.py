@@ -2,8 +2,8 @@ import gym
 import time
 import ray
 import example.dqn.config as config
-from core.wise_rl  import WiseRL
-from core.env import Env
+from wiseRL.core.wise_rl  import WiseRL
+from wiseRL.core.env import Env
 
 #@WiseRL.actor
 class EnvActor(Env):
@@ -12,16 +12,13 @@ class EnvActor(Env):
         self.env = config.env
         
     def run(self):
-
-        action = self.getActor("action")
         learner = self.getActor("learner")
-        print("action", action.choseAction)
         start = time.time()
         for i_episode in range(config.MAX_EPOCH):
             s = self.env.reset()[0]
             ep_r = 0
             while True:
-                a = action.choseAction(s)
+                a = learner.choseAction(s)
                 s_, r, done, info, _ = self.env.step(a)
                 x, x_dot, theta, theta_dot = s_
                 r1 = (self.env.x_threshold - abs(x)) / self.env.x_threshold - 0.8

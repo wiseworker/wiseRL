@@ -8,8 +8,8 @@ import ray
 from example.dqn.net import Net
 import example.dqn.config as config
 from  example.dqn.mem_store import MemoryStore
-from core.wise_rl  import WiseRL
-from core.learner import Learner
+from wiseRL.core.wise_rl  import WiseRL
+from wiseRL.core.learner import Learner
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 class LearnerActor(Learner):
     def __init__(self):
@@ -57,11 +57,20 @@ class LearnerActor(Learner):
         self.optimizer.zero_grad() # reset the gradient to zero
         loss.backward()
         self.optimizer.step() # execute back propagation for one step
-        if self.learn_step_counter % config.ACTION_FIRE == 0:
-            param = self.eval_net.state_dict()
-            if device.type != "cpu":
-                for name, mm in param.items():
-	                param[name]= mm.cpu()
-            self.fire('action', param )
+        # if self.learn_step_counter % config.ACTION_FIRE == 0:
+        #     param = self.eval_net.state_dict()
+        #     if device.type != "cpu":
+        #         for name, mm in param.items():
+	    #             param[name]= mm.cpu()
+        #     self.fire('action', param )
    
-      
+    def choseAction(self, x):
+        x = torch.unsqueeze(torch.FloatTensor(x), 0) # add 1 dimension to input state x
+        if np.random.uniform() < config.EPSILON:   
+            actions_value = self.eval_net.forward(x)
+            action = torch.max(actions_value, 1)[1].data.numpy()
+            action = action[0] if config.ENV_A_SHAPE == 0 else action.reshape(config.ENV_A_SHAPE)  # return the argmax index
+        else:   # random
+            action = np.random.randint(0, config.N_ACTIONS)
+            action = action if config.ENV_A_SHAPE == 0 else action.reshape(config.ENV_A_SHAPE)
+        return action      

@@ -12,7 +12,6 @@ leaner通过fire调用action的load_mode,更新action参数<br/>
 
 # 运行
 <pre><code>
-pip install ray
-python main.py
+pip install -e .
 </code></pre>
 
