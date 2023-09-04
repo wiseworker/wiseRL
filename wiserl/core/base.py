@@ -5,6 +5,9 @@ class Base(object):
         self.registre = None
         self.rank =0
 
+    def start(self):
+        pass
+
     def setRank(self,rank):
         self.rank = rank
     
