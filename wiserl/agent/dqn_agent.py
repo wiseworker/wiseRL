@@ -6,21 +6,25 @@ import torch.nn.functional as F
 import numpy as np
 import ray
 from  wiserl.core.agent import Agent
-from  .mem_store import MemoryStore
+from  wiserl.store.mem_store import MemoryStore
+import wiserl.agent.config as cfg
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class DQNAgent(Agent):
-    def __init__(self,Net,n_states,n_actions,config):
-        super().__init__()
-        self.config=config
+    def __init__(self,net_class,n_states,n_actions,config=None, sync=True):
+        super().__init__(sync)
+        self.config = cfg
+        if config != None:
+            self.config=config
         self.n_actions = n_actions
-        self.eval_net, self.target_net = Net(n_states,n_actions).to(device), Net(n_states,n_actions).to(device)
+        self.n_states = n_states
+        self.eval_net, self.target_net = net_class(n_states,n_actions).to(device), net_class(n_states,n_actions).to(device)
         self.learn_step_counter = 0 
         self.memory_store = MemoryStore(8000,n_states * 2 + 2) 
         self.memory = np.zeros(()) 
         #------- Define the optimizer------#
-        self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=config.LR)
+        self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=self.config.LR)
         
         # ------Define the loss function-----#
         self.loss_func = nn.MSELoss()
@@ -39,7 +43,7 @@ class DQNAgent(Agent):
             self.target_net.load_state_dict(param)
     
         self.learn_step_counter += 1
-        b_s, b_a, b_r, b_s_ = self.memory_store.sample(self.config.BATCH_SIZE,self.config.N_STATES)
+        b_s, b_a, b_r, b_s_ = self.memory_store.sample(self.config.BATCH_SIZE,self.n_states)
         b_a = b_a.to(device)
         b_s = b_s.to(device)
         b_r= b_r.to(device)
@@ -58,15 +62,11 @@ class DQNAgent(Agent):
         self.optimizer.zero_grad() # reset the gradient to zero
         loss.backward()
         self.optimizer.step() # execute back propagation for one step
-        if self.learn_step_counter % self.config.ACTION_FIRE == 0:
-            param = self.eval_net.state_dict()
-            if device.type != "cpu":
-                for name, mm in param.items():
-	                param[name]= mm.cpu()
-            self.fire('action', param )
+        if self.sync == False:
+            self._syncModel()
+        
    
     def choseAction(self, x):
-        print("x")
         x = torch.unsqueeze(torch.FloatTensor(x), 0) # add 1 dimension to input state x
         if np.random.uniform() < self.config.EPSILON:   
             actions_value = self.eval_net.forward(x)
@@ -76,3 +76,15 @@ class DQNAgent(Agent):
             action = np.random.randint(0, self.n_actions)
             action = action #if self.config.ENV_A_SHAPE == 0 else action.reshape(self.config.ENV_A_SHAPE)
         return action    
+
+    def _syncModel(self):
+        param = self.eval_net.state_dict()
+        if device.type != "cpu":
+            for name, mm in param.items():
+                param[name]= mm.cpu()
+        self._fire(param)
+    
+    def _updateModel(self,param):
+        self.eval_net.load_state_dict(param)
+        self.target_net.load_state_dict(param)
+

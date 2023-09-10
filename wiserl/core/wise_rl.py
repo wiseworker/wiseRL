@@ -1,70 +1,60 @@
+# -- coding: utf-8 --
+
 import ray
 import time
-from  .registre import Registre
+import uuid
+from  .registre_server import RegistreServer
 from  .runner import Runner
 from  .agent import Agent
 
 #ray.init()
-registre =  Registre.remote()
-# class WiseRL:
-#     def __init__(self, actor_cfg, num_gpus:0):
-#         ray.init(num_gpus=num_gpus)
-#         self.
-#         for cfg in actor_cfg:
-#             actor_num = 1
-#             if "num" in cfg:
-#                actor_num = cfg['num']
-            
-#             num_gpus = 0
-#             if "num_gpus" in cfg:
-#                num_gpus = cfg['num_gpus']
-         
-#             for n in range(actor_num):
-#                 actor = None
-#                 if num_gpus ==0:
-#                     actor =ray.remote(cfg['actor']).remote()
-#                 else:
-#                     print("num_gpus=",num_gpus)
-#                     actor =ray.remote(cfg['actor']).options(num_gpus=num_gpus).remote()
-#                 actor.setRegistre.remote(self.registre)
-#                 actor.setRank.remote(n)
-#                 self.registre.addActor.remote(cfg['name'], actor ) 
-#                 if issubclass( cfg['actor'], Env):
-#                     self.registre.addEnv.remote(cfg['name'], actor )  
 
-    # def run(self):
-    #     envs_s = ray.get(registre.getAllEnv.remote())
-    #     refs = []
-    #     for envs in envs_s:
-    #         for env in envs:
-    #             ref = env.run.remote()
-    #             refs.append(ref)
-    #     results = ray.get(refs)
-    #     print("results",results)
-    #     time.sleep(10)
+class WiseRL(object):
+    def __init__(self):
+        self.registre =  RegistreServer.remote()
+        print("add registre",self.registre)
 
-def makeRunner(Runner,num =1):
-    for i in range(num):
-        print("i",i)
-        runner =ray.remote(Runner).remote(local_rank=i)
-        registre.addRunner.remote(Runner.__name__,runner)
-    retref = registre.getAllRunner.remote(Runner.__name__)
-    return ray.get(retref)
+    def makeRunner(self, name,Runner,num =1):
+        print("num",num)
+        for i in range(num):
+            print("i",i)
+            runner =ray.remote(Runner).remote(local_rank=i)
+            self.registre.addRunner.remote(name,runner)
+            runner.setRegistre.remote(self.registre)
+        retref = self.registre.getAllRunner.remote(name)
+        return ray.get(retref)
 
-def getRunner(Runner):
-    return ray.get(registre.getRunner.remote(Runner.__name__))
+    def getRunner(self, name):
+        return ray.get(self.registre.getRunner.remote(name))
 
-def makeAgent(Agent,net,n_states ,n_actions,config=None,num=1) :
-    print("num=============",num)
-    for i in range(num):
-        agent =ray.remote(Agent).remote(net,n_states,n_actions,config)
-        registre.addAgent.remote(Agent.__name__,agent)
-    retref = registre.getAllAgent.remote(Agent.__name__)
-    return ray.get(retref)
+    def makeAgent(self,name,agent_class,net_class,n_states ,n_actions,config=None,num=1, sync=True) :
+        copy_name= None
+        if sync == False:
+            copy_name="_wise_copy_" + name + str(uuid.uuid1())
+        for i in range(num):
+            agent =ray.remote(agent_class).remote(net_class,n_states,n_actions,config,sync)
+            self.registre.addAgent.remote(name,agent)
+            agent.setRegistre.remote(self.registre)
+            if sync == False:
+                agent.setCopyName.remote(copy_name)
+                copy_agent =ray.remote(agent_class).remote(net_class,n_states,n_actions,config,sync)
+                self.registre.addAgent.remote(copy_name,copy_agent)
+                copy_agent.setRegistre.remote(self.registre)        
+        retref = self.registre.getAllAgent.remote(name)
+        return ray.get(retref)
 
-def getAgent(Agent):
-    while True:
-        agent =ray.get(registre.getAgent.remote(Agent.__name__))
-        if agent != None:
-            return agent
-        time.sleep(2)
+    def getAgent(self, name):
+        for i in range(100):
+            agent =ray.get(self.registre.getAgent.remote(name))
+            print("agent",agent,name)
+            if agent != None:
+                return agent
+            time.sleep(1)
+        raise ValueError(name + " agent not found ,please check that the name is correct")
+
+    def startAllRunner(self, runners):
+        results =[]
+        for runner in runners:
+            ref = runner.run.remote()
+            results.append(ref)
+        ray.get(results)
