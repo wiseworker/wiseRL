@@ -17,7 +17,6 @@ class DQNNet(nn.Module):
         
     def forward(self, x):
         # Define how the input data pass inside the network
-        print("x",x)
         x = self.fc1(x)
         x = F.relu(x)
         actions_value = self.out(x)
