@@ -67,9 +67,9 @@ class DQNAgent(Agent):
         
    
     def choseAction(self, x):
-        x = torch.unsqueeze(torch.FloatTensor(x), 0) # add 1 dimension to input state x
+        x = torch.unsqueeze(torch.FloatTensor(x).to(device), 0) # add 1 dimension to input state x
         if np.random.uniform() < self.config.EPSILON:   
-            actions_value = self.eval_net.forward(x)
+            actions_value = self.eval_net.forward(x).cpu()
             action = torch.max(actions_value, 1)[1].data.numpy()
             action = action[0] #if self.config.ENV_A_SHAPE == 0 else action.reshape(self.config.ENV_A_SHAPE)  # return the argmax index
         else:   # random
