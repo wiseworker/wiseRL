@@ -16,7 +16,7 @@ class GymRunner(Runner):
         self.local_rank = local_rank
         if local_rank ==0:
             #net = DQNNet(N_STATES,N_ACTIONS)
-            wise_rl.makeAgent(name ="dqn_agent",agent_class=DQNAgent, net_class=DQNNet,n_states=N_STATES,n_actions=N_ACTIONS,sync=True)
+            wise_rl.makeAgent(name ="dqn_agent",agent_class=DQNAgent, net_class=DQNNet,n_states=N_STATES,n_actions=N_ACTIONS,sync=False)
             self.agent = wise_rl.getAgent("dqn_agent")
         else:
             self.agent = wise_rl.getAgent("dqn_agent")

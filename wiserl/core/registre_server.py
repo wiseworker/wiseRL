@@ -10,16 +10,18 @@ class RegistreServer(object):
 
     def __init__(self):
         self.agent_dict = {}
+        self.agent_copy_dict = {}
         self.agent_index = {}
         self.runner_dict = {}
         self.runner_index = {}
 
-    def addAgent(self,name,agent):
+    def addAgent(self,name,agent, copy_agent=None):
         if name in self.agent_dict.keys():
             self.agent_dict[name].append(agent)
         else:
             self.agent_dict[name]=[]
             self.agent_dict[name].append(agent)
+        self.agent_copy_dict[name] = copy_agent
         if name not in self.agent_index.keys():
             self.agent_index[name] = 0
   
@@ -32,14 +34,20 @@ class RegistreServer(object):
         if index>=len(self.agent_dict[name]):
             index = 0
             self.agent_index[name]=index
-        agent = self._createRemoteAgent(agent)
+        copy_agent = None
+        if name in self.agent_copy_dict.keys():
+            copy_agent = self.agent_copy_dict[name]
+        agent = self._createRemoteAgent(agent, copy_agent)
         return agent
 
     def getAllAgent(self,name):
         agents = self.agent_dict[name]
         remote_agents = []
+        copy_agent = None
+        if name in self.agent_copy_dict.keys():
+            copy_agent = self.agent_copy_dict[name]
         for agent in agents:
-            agent = self._createRemoteAgent(agent)
+            agent = self._createRemoteAgent(agent, copy_agent)
             remote_agents.append(agent)
         return remote_agents
     
@@ -77,10 +85,10 @@ class RegistreServer(object):
 
     
       
-    def _createRemoteAgent(self,actor):
-        remoteAgent = AgentProxy(actor)
+    def _createRemoteAgent(self,agent, copy_agent):
+        remoteAgent = AgentProxy(agent ,copy_agent)
         return remoteAgent
 
-    def _createRemoteRunner(self,actor):
-        remoteRunner = RunnerProxy(actor)
+    def _createRemoteRunner(self,runner):
+        remoteRunner = RunnerProxy(runner)
         return remoteRunner
