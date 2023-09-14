@@ -20,6 +20,7 @@ if __name__=='__main__':
 <pre><code>
 pip install -e .
 cd example
+ray start --head --port=6379
 python dqn.py
 </code></pre>
 
