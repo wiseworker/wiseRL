@@ -1,10 +1,9 @@
 from wiserl.core.runner import Runner
-from wiserl.agent.dqn_agent import DQNAgent
+from wiserl.agent.dqn_agent.dqn_agent import DQNAgent
 from wiserl.net.dqn_net import DQNNet
 from wiserl.core.wise_rl import WiseRL
 import gym
 import time
-import ray
 
 wise_rl = WiseRL()
 

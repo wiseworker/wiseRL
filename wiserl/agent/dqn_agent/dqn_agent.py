@@ -1,13 +1,10 @@
 
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
-import torch.nn.functional as F
 import numpy as np
-import ray
 from  wiserl.core.agent import Agent
 from  wiserl.store.mem_store import MemoryStore
-import wiserl.agent.config as cfg
+import wiserl.agent.dqn_agent.config as cfg
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
