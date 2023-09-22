@@ -40,6 +40,24 @@ class WiseRL(object):
         retref = self.registre.getAllAgent.remote(name)
         return ray.get(retref)
 
+    def makeSACAgent(self, name, agent_class, actor_net, value_net, q_net, n_states, n_actions, config=None, num=1,
+                     sync=True):
+        copy_name = None
+        if sync is not True:
+            copy_name = "_wise_copy_" + name + str(uuid.uuid1())
+        for i in range(num):
+            agent = ray.remote(agent_class).remote(actor_net, value_net, q_net, n_states, n_actions, config, sync)
+            self.registre.addAgent.remote(name, agent)
+            agent.setRegistre.remote(self.registre)
+            if sync is not True:
+                agent.setCopyName.remote(copy_name)
+                copy_agent = ray.remote(agent_class).remote(actor_net, value_net, q_net, n_states, n_actions, config,
+                                                            sync)
+                self.registre.addAgent.remote(copy_name, copy_agent)
+                copy_agent.setRegistre.remote(self.registre)
+        retref = self.registre.getAllAgent.remote(name)
+        return ray.get(retref)
+
     def getAgent(self, name):
         for i in range(100):
             agent =ray.get(self.registre.getAgent.remote(name))
