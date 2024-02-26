@@ -1,7 +1,7 @@
 from wiserl.core.runner import Runner
 from wiserl.agent.dqn_agent.dqn_agent import DqnAgent
 from wiserl.core.wise_rl import WiseRL
-from ..env import make_env, WsEnv
+from wiserl.env import make_env, WsEnv
 import time
 import argparse
 import configparser
