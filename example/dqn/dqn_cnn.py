@@ -1,7 +1,7 @@
 from wiserl.core.runner import Runner
 from wiserl.agent.dqn_agent.dqn_agent import DqnAgent
 from wiserl.core.wise_rl import WiseRL
-from ..env import make_env, WsEnv
+from wiserl.env import make_env, WsEnv , save_gym_state
 import time
 import argparse
 import configparser
@@ -15,12 +15,42 @@ class GymRunner(Runner):
         self.config = args
         setattr(self.config, 'state_dim', self.env.state_dim)
         setattr(self.config, 'action_dim', self.env.action_dim)
+        stack_size = 4
+        self.stacked_frames  =  deque([np.zeros((84,84), dtype=np.int) for i in range(stack_size)], maxlen=4)
         self.total_steps = 0
         if local_rank == 0:
             wise_rl.make_agent(name=self.agent_name, agent_class=DqnAgent,config = self.config)
             self.agent = wise_rl.get_agent(self.agent_name)
         else:
             self.agent = wise_rl.get_agent(self.agent_name)
+
+
+
+    def stack_frames(stacked_frames, state, is_new_episode):
+        # Preprocess frame
+        frame = preprocess_frame(state)
+    
+        if is_new_episode:
+            # Clear our stacked_frames
+            stacked_frames = deque([np.zeros((84,84), dtype=np.int) for i in range(stack_size)], maxlen=4)
+        
+            # Because we're in a new episode, copy the same frame 4x
+            stacked_frames.append(frame)
+            stacked_frames.append(frame)
+            stacked_frames.append(frame)
+            stacked_frames.append(frame)
+        
+            # Stack the frames
+            stacked_state = np.stack(stacked_frames, axis=2)
+        
+        else:
+            # Append frame to deque, automatically removes the oldest frame
+            stacked_frames.append(frame)
+
+            # Build the stacked state (first dimension specifies different frames)
+            stacked_state = np.stack(stacked_frames, axis=2) 
+    
+        return stacked_state, stacked_frames
 
     def run(self):
         start = time.time()
@@ -30,6 +60,8 @@ class GymRunner(Runner):
             while True:
                 a = self.agent.choose_action(s)
                 s_, r, done, info, _ = self.env.step(a)
+                save_gym_state(self.env.env, self.total_steps)
+                next_state, stacked_frames = self.stack_frames(self.stacked_frames, next_state, False)
                 x, x_dot, theta, theta_dot = s_
                 r1 = (self.env.env.x_threshold - abs(x)) / self.env.env.x_threshold - 0.8
                 r2 = (self.env.env.theta_threshold_radians - abs(theta)) / self.env.env.theta_threshold_radians - 0.5

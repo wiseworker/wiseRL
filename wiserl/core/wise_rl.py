@@ -6,67 +6,63 @@ import uuid
 from  .registre_server import RegistreServer
 from  .runner import Runner
 from  .agent import Agent
+import configparser
+import os
+
 
 #ray.init()
 
 class WiseRL(object):
     def __init__(self):
         self.registre =  RegistreServer.remote()
-    def makeRunner(self, name,Runner,num =1):
+
+    def make_runner(self, name,Runner,args=None,num =1,resource=None):
         for i in range(num):
-            runner =ray.remote(Runner).remote(local_rank=i)
-            self.registre.addRunner.remote(name,runner)
-            runner.setRegistre.remote(self.registre)
-        retref = self.registre.getAllRunner.remote(name)
+            runner =ray.remote(Runner)
+            if resource != None:
+                runner = runner.options(**resource)
+            runner =runner.remote(args,local_rank=i)
+            self.registre.add_runner.remote(name,runner)
+            runner.set_registre.remote(self.registre)
+        retref = self.registre.get_all_runner.remote(name)
         return ray.get(retref)
 
-    def getRunner(self, name):
-        return ray.get(self.registre.getRunner.remote(name))
+    def get_runner(self, name):
+        return ray.get(self.registre.get_runner.remote(name))
 
-    def makeAgent(self,name,agent_class,net_class,n_states ,n_actions,config=None,num=1, sync=True) :
+    def make_agent(self,name,agent_class,config=None,num=1, sync=True, resource=None) :
         copy_name= None
         copy_agent = None
         if sync == False:
             copy_name="_wise_copy_" + name + str(uuid.uuid1())
-            copy_agent =ray.remote(agent_class).remote(net_class,n_states,n_actions,config,sync)
-            self.registre.addAgent.remote(copy_name,copy_agent,copy_agent)
-            copy_agent.setRegistre.remote(self.registre) 
+            copy_agent =ray.remote(agent_class)
+            if resource != None:
+                copy_agent = copy_agent.options(**resource)
+            copy_agent = copy_agent.remote(config,sync)
+            self.registre.add_agent.remote(copy_name,copy_agent,copy_agent)
+            copy_agent.set_registre.remote(self.registre) 
+
         for i in range(num):
-            agent =ray.remote(agent_class).remote(net_class,n_states,n_actions,config,sync)
-            self.registre.addAgent.remote(name,agent,copy_agent)
-            agent.setRegistre.remote(self.registre)
+            agent =ray.remote(agent_class)
+            if resource != None:
+                agent = agent.options(**resource)
+            agent = agent.remote(config,sync)
+            self.registre.add_agent.remote(name,agent,copy_agent)
+            agent.set_registre.remote(self.registre)
             if sync == False:
-                agent.setCopyName.remote(copy_name)
-        retref = self.registre.getAllAgent.remote(name)
+                agent.set_copy_name.remote(copy_name)
+        retref = self.registre.get_all_agent.remote(name)
         return ray.get(retref)
 
-    def makeSACAgent(self, name, agent_class, actor_net, value_net, q_net, n_states, n_actions, config=None, num=1,
-                     sync=True):
-        copy_name = None
-        if sync is not True:
-            copy_name = "_wise_copy_" + name + str(uuid.uuid1())
-        for i in range(num):
-            agent = ray.remote(agent_class).remote(actor_net, value_net, q_net, n_states, n_actions, config, sync)
-            self.registre.addAgent.remote(name, agent)
-            agent.setRegistre.remote(self.registre)
-            if sync is not True:
-                agent.setCopyName.remote(copy_name)
-                copy_agent = ray.remote(agent_class).remote(actor_net, value_net, q_net, n_states, n_actions, config,
-                                                            sync)
-                self.registre.addAgent.remote(copy_name, copy_agent)
-                copy_agent.setRegistre.remote(self.registre)
-        retref = self.registre.getAllAgent.remote(name)
-        return ray.get(retref)
-
-    def getAgent(self, name):
+    def get_agent(self, name):
         for i in range(100):
-            agent =ray.get(self.registre.getAgent.remote(name))
+            agent =ray.get(self.registre.get_agent.remote(name))
             if agent != None:
                 return agent
             time.sleep(1)
         raise ValueError(name + " agent not found ,please check that the name is correct")
 
-    def startAllRunner(self, runners):
+    def start_all_runner(self, runners):
         results =[]
         for runner in runners:
             ref = runner.run.remote()

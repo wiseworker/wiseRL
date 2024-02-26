@@ -7,14 +7,15 @@ class AgentProxy(object):
         self.agent = agent
         self.copy_agent = copy_agent
        
-    def choseAction(self, *args,**kwargs):
+    def choose_action(self, *args,**kwargs):
+        result = None
         if self.copy_agent != None:
-            return ray.get(self.copy_agent.choseAction.remote(*args , **kwargs))
+            return ray.get(self.copy_agent.choose_action.remote(*args , **kwargs))
         else:
-            return ray.get(self.agent.choseAction.remote(*args , **kwargs))
+            return ray.get(self.agent.choose_action.remote(*args , **kwargs))
 
     def update(self,*args,**kwargs):
         ray.get(self.agent.update.remote(*args, **kwargs))
     
-    def _updateModel(self,*args, **kwargs):
-        ray.get(self.agent._updateModel.remote(*args, **kwargs))
+    def _update_model(self,*args, **kwargs):
+        ray.get(self.agent._update_model.remote(*args, **kwargs))

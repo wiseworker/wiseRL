@@ -8,10 +8,10 @@ class Actor(object):
     def __init__(self):
         self.registre = None
 
-    def setRegistre(self,registre):
+    def set_registre(self,registre):
         self.registre = registre
 
-    def getRegistre(self):
+    def get_registre(self):
         return self.registre
 
      

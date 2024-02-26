@@ -10,8 +10,8 @@ class Runner(Actor):
     def run(self):
         pass
 
-    def setRank(self,rank):
+    def set_rank(self,rank):
         self.rank = rank
     
-    def getRank(self):
+    def get_rank(self):
         return self.rank
