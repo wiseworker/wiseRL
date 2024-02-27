@@ -16,9 +16,6 @@ import array
 
 wise_rl = WiseRL()
 
-
-
-
 class GymRunner(Runner):
     def __init__(self, args=None, local_rank=0):
         self.ws_env = make_env("simple_spread_v3")

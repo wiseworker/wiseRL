@@ -36,7 +36,6 @@ def evaluate_policy(args, env, agent, state_norm):
 
     return evaluate_reward / times
 
-
 class GymRunner(Runner):
     def __init__(self, args=None, local_rank=0):
         self.env = gym.make("CartPole-v1")

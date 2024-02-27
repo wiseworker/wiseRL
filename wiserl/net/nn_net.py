@@ -1,4 +1,3 @@
-
 import math
 import torch
 import torch.nn as nn
@@ -326,7 +325,6 @@ class ActorPPO(ActorBase):
     def convert_action_for_env(action: Tensor) -> Tensor:
         return action.tanh()
 
-
 class ActorDiscretePPO(ActorBase):
     def __init__(self, dims: [int], state_dim: int, action_dim: int):
         super().__init__(state_dim=state_dim, action_dim=action_dim)
@@ -339,7 +337,8 @@ class ActorDiscretePPO(ActorBase):
     def forward(self, state: Tensor) -> Tensor:
         state = self.state_norm(state)
         a_prob = self.net(state)  # action_prob without softmax
-        return a_prob.argmax(dim=1)  # get the indices of discrete action
+        return self.soft_max(a_prob)
+             # a_prob.argmax(dim=1)  # get the indices of discrete action
 
     def get_action(self, state: Tensor) -> (Tensor, Tensor):
         state = self.state_norm(state)

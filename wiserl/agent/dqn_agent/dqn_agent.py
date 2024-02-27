@@ -2,10 +2,10 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from  wiserl.core.agent import Agent
+from wiserl.core.agent import Agent
 from wiserl.net.nn_net import QNet
-from  wiserl.utils.mem_store import MemoryStore
-from wiserl.agent.agent_utils import  get_optimizer
+from wiserl.utils.mem_store import MemoryStore
+from wiserl.agent.agent_utils import get_optimizer
 from wiserl.agent.config import Config
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -38,7 +38,6 @@ class DqnAgent(Agent):
         else:
             action = np.random.randint(0, self.action_dim)
         return action
-     
 
     def update(self, s, a, r, s_, done):
         self.memory_store.push(s, a, r, s_, done)

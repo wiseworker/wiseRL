@@ -19,6 +19,7 @@ if __name__=='__main__':
 # 运行
 <pre><code>
 pip install -e .
+pip install pettingzoo pygame
 cd example
 ray start --head --port=6379
 python dqn.py

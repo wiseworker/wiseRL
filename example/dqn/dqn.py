@@ -8,16 +8,17 @@ import configparser
 
 wise_rl = WiseRL()
 class GymRunner(Runner):
-    def __init__(self, args,local_rank=0):
+    def __init__(self, args, local_rank=0):
         self.local_rank = local_rank
         self.agent_name ="dqn_agent"
         self.env = make_env("CartPole-v1")
         self.config = args
+        # config setting
         setattr(self.config, 'state_dim', self.env.state_dim)
         setattr(self.config, 'action_dim', self.env.action_dim)
         self.total_steps = 0
         if local_rank == 0:
-            wise_rl.make_agent(name=self.agent_name, agent_class=DqnAgent,config = self.config)
+            wise_rl.make_agent(name=self.agent_name, agent_class=DqnAgent, config=self.config)
             self.agent = wise_rl.get_agent(self.agent_name)
         else:
             self.agent = wise_rl.get_agent(self.agent_name)
@@ -70,5 +71,5 @@ if __name__ == '__main__':
     parser.add_argument("--set_adam_eps", type=float, default=True, help="Trick 9: set Adam epsilon=1e-5")
     parser.add_argument("--use_tanh", type=float, default=True, help="Trick 10: tanh activation function")
     args = parser.parse_args()
-    runners = wise_rl.make_runner("runner", GymRunner,args, num=5)
+    runners = wise_rl.make_runner("runner", GymRunner, args, num=5)
     wise_rl.start_all_runner(runners)
