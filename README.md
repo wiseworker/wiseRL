@@ -20,8 +20,8 @@ if __name__=='__main__':
 <pre><code>
 pip install -e .
 pip install pettingzoo pygame
-cd example
+cd example/ppo
 ray start --head --port=6379
-python dqn.py
+python ppo_discrete.py
 </code></pre>
 
