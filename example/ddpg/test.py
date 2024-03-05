@@ -102,7 +102,7 @@ class DDPG(object):
         self.replay_buffer = ReplayBuffer()
     def select_action(self, state):
         # select action based on actor network and add some noise on it for exploration
-        print("state",state)
+       
         state = torch.FloatTensor(state).to(device)
         action = self.actor(state).cpu().data.numpy().flatten()
         noise = np.random.normal(0, NOISE_VAR, size=ACTION_DIM).clip(
@@ -158,10 +158,10 @@ def main():
         total_reward = 0
         step = 0
         state = env.reset()[0]
-        for t in count():
+        for t in range(200):
             if RENDER == True and i > 100: env.render() # Render is unnecessary
             action = agent.select_action(state)
-            print("action",action)
+            
             # get the next transition by using current action
             next_state, reward, done, info,_ = env.step(action)
             # store the transition to the buffer

@@ -4,29 +4,34 @@ import numpy as np
 import copy
 from  wiserl.core.agent import Agent
 import torch.nn.functional as F
-from wiserl.agent.agent_utils import  get_optimizer,make_actor_net,make_critic_net
+from wiserl.utils.replay_buffer import Offpolicy_ReplayBuffer as ReplayBuffer
+from wiserl.agent.agent_utils import get_optimizer, make_actor_net, make_critic_net
 from  wiserl.agent.ppo_agent.ppo_config import init_params
-import wiserl.agent.ppo_agent.ppo_config  as config 
 from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 from torch.distributions import Categorical
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class DDPGAgent(Agent):
-    def __init__(self, net_cfg,cfg=None,sync=True):
-        # if cfg != None:
-        #     init_params(cfg)
-        self.lr_a = config.lr_a  # Learning rate of actor
-        self.lr_c = config.lr_c  # Learning rate of critic
-        self.gamma = config.gamma  # Discount factor
-        self.lamda = config.lamda  # GAE parameter
+    def __init__(self, config=None, sync=True):
+        self.config = config
+        self.lr_a = config.lr_a   # Learning rate of actor
+        self.lr_c = config.lr_c   # Learning rate of critic
+        self.gamma = config.gamma # Discount factor
+        self.sigma = config.sigma # Gaussian factor
+        self.tau = config.tau     # soft-update factor
         self.use_lr_decay = config.use_lr_decay
         self.use_adv_norm = config.use_adv_norm
         self.set_adam_eps = config.set_adam_eps
         self.sync = sync
-        self.actor = make_actor_net("nn",net_cfg ,config)
-        self.critic =make_critic_net("nn",net_cfg ,config)
-        self.actor_target = copy.deepcopy(self.actor)
-        self.critic_target = copy.deepcopy(self.critic)
+        self.replay_buffer = ReplayBuffer(config.buffer_size)
+        self.actor = make_actor_net("ddpg_nn", config)
+        self.critic = make_critic_net("ddpg_nn", config)
+        self.target_actor = make_actor_net("ddpg_nn", config)
+        self.target_critic = make_critic_net("ddpg_nn", config)
+        self.target_critic.load_state_dict(self.critic.state_dict())
+        self.target_actor.load_state_dict(self.actor.state_dict())
+        # self.target_actor = copy.deepcopy(self.actor)
+        # self.target_critic = copy.deepcopy(self.critic)
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         if self.set_adam_eps:  # Trick 9: set Adam epsilon=1e-5
             self.optimizer_actor = torch.optim.Adam(self.actor.parameters(), lr=self.lr_a, eps=1e-5)
@@ -34,63 +39,52 @@ class DDPGAgent(Agent):
         else:
             self.optimizer_actor = torch.optim.Adam(self.actor.parameters(), lr=self.lr_a)
             self.optimizer_critic = torch.optim.Adam(self.critic.parameters(), lr=self.lr_c)
-     
-    def evaluate(self, s):  # When evaluating the policy, we select the action with the highest probability
-        s = torch.unsqueeze(torch.tensor(s, dtype=torch.float), 0)
-        a_prob = self.actor(s).detach().numpy().flatten()
-        a = np.argmax(a_prob)
-        return a
 
-    def choose_action(self, s):
-        s = torch.unsqueeze(torch.tensor(s, dtype=torch.float), 0)
-        with torch.no_grad():
-            dist = Categorical(probs=self.actor(s))
-            a = dist.sample()
-            a_logprob = dist.log_prob(a)
-        return a.numpy()[0], a_logprob.numpy()[0]
+    def choose_action(self, state):
+        state = torch.tensor([state], dtype=torch.float).to(self.device)
+        action = self.actor(state).item()
+        # add noise
+        action = action + self.sigma * np.random.randn(self.config.action_dim)
+        return action
 
-    def update(self, replay_buffer, total_steps):
-        batch_s, batch_a, a_logprob,batch_r, batch_s_, batch_dw ,done= replay_buffer.numpy_to_tensor()   # Sample a batch
+    def soft_update(self, net, target_net):
+        for param_target, param in zip(target_net.parameters(), net.parameters()):
+            param_target.data.copy_(param_target.data * (1.0 - self.tau) + param.data * self.tau)
 
-        # Compute the target Q
-        with torch.no_grad():  # target_Q has no gradient
-            Q_ = self.critic_target(batch_s_, self.actor_target(batch_s_))
-            target_Q = batch_r + self.GAMMA * (1 - batch_dw) * Q_
-
-        # Compute the current Q and the critic loss
-        current_Q = self.critic(batch_s, batch_a)
-        critic_loss = self.MseLoss(target_Q, current_Q)
-        # Optimize the critic
-        self.critic_optimizer.zero_grad()
+    def update(self, s, a, r, s_, done):
+        self.replay_buffer.add(s, a, r, s_, done)
+        if self.replay_buffer.size() < self.config.batch_size:
+            return
+        
+        states, actions, rewards, next_states, dones = self.replay_buffer.sample(self.config.batch_size)
+    
+        states = torch.tensor(states, dtype=torch.float).to(self.device)
+        actions = torch.tensor(actions, dtype=torch.float).view(-1, 1).to(self.device)
+        rewards = torch.tensor(rewards, dtype=torch.float).view(-1, 1).to(self.device)
+        next_states = torch.tensor(next_states, dtype=torch.float).to(self.device)
+        dones = torch.tensor(dones, dtype=torch.float).view(-1, 1).to(self.device)
+        # print("*************actions:", actions)
+        next_q_values = self.target_critic(next_states, self.target_actor(next_states))
+        # print("*************next_q_values:", next_q_values)
+        q_targets = rewards + self.gamma * next_q_values * (1 - dones)
+        # print("*************q_targets:", q_targets)
+        critic_loss = torch.mean(F.mse_loss(self.critic(states, actions), q_targets))
+        # print("*****critic_loss:", critic_loss)
+        self.optimizer_critic.zero_grad()
         critic_loss.backward()
-        self.critic_optimizer.step()
-
-        # Freeze critic networks so you don't waste computational effort
-        for params in self.critic.parameters():
-            params.requires_grad = False
-
-        # Compute the actor loss
-        actor_loss = -self.critic(batch_s, self.actor(batch_s)).mean()
-        # Optimize the actor
-        self.actor_optimizer.zero_grad()
+        self.optimizer_critic.step()
+        # print("Action:", self.actor(states))
+        actor_loss = -torch.mean(self.critic(states, self.actor(states)))
+        # print("*****loss:", actor_loss)
+        self.optimizer_actor.zero_grad()
         actor_loss.backward()
-        self.actor_optimizer.step()
+        self.optimizer_actor.step()
 
-        # Unfreeze critic networks
-        for params in self.critic.parameters():
-            params.requires_grad = True
+        self.soft_update(self.actor, self.target_actor)  # soft-update for actor
+        self.soft_update(self.critic, self.target_critic)  # soft-update for critic
 
-        # Softly update the target networks
-        for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
-            target_param.data.copy_(self.TAU * param.data + (1 - self.TAU) * target_param.data)
-
-        for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
-            target_param.data.copy_(self.TAU * param.data + (1 - self.TAU) * target_param.data)
-
-        if self.use_lr_decay:  # Trick 6:learning rate Decay
-            self.lr_decay(total_steps)
-        if self.sync == False:
-            self._sync_model()
+        #if self.sync == False:
+        #    self._sync_model()
 
     def lr_decay(self, total_steps):
         lr_a_now = self.lr_a * (1 - total_steps / self.max_train_steps)
@@ -102,15 +96,12 @@ class DDPGAgent(Agent):
 
     def _sync_model(self):
         actor_param = self.actor.state_dict()
-        if device.type != "cpu":
+        if self.device.type != "cpu":
             for name, mm in actor_param.items():
                 actor_param[name]= mm.cpu()
         critic_param = self.critic.state_dict()
-        if device.type != "cpu":
+        if self.device.type != "cpu":
             for name, mm in critic_param.items():
                 critic_param[name]= mm.cpu()
         self._fire(actor_param,critic_param)
     
-    def _update_model(self,actor_param,critic_param):
-        self.actor.load_state_dict(actor_param)
-        self.critic.load_state_dict(critic_param)

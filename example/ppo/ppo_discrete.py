@@ -23,8 +23,8 @@ class GymRunner(Runner):
         # config setting
         setattr(self.config, 'state_dim', self.wsenv.state_dim)
         setattr(self.config, 'action_dim', self.wsenv.action_dim)
-        print(args)
-        if local_rank == 0:
+
+        if self.local_rank == 0:
             wise_rl.make_agent(name=self.agent_name, agent_class=PPOAgent, config=self.config, sync=True)    
         self.agent = wise_rl.get_agent(self.agent_name)
         self.state_norm = Normalization(shape=self.config.state_dim)  # Trick 2:state normalization
@@ -34,7 +34,9 @@ class GymRunner(Runner):
         evaluate_rewards = []  # Record the rewards during the evaluating
         total_steps = 0  # Record the total steps during the training
         batch_size = 2048 if self.config.batch_size == None else int(self.config.batch_size)
-        replay_buffer = ReplayBuffer(batch_size,self.config.state_dim)
+        # replay_buffer = ReplayBuffer(batch_size,self.config.state_dim, Discrete=True)
+        replay_buffer = ReplayBuffer(self.config, Discrete=True)
+
         while total_steps < self.config.max_train_steps:
             state = self.wsenv.reset()[0]
             done = False
@@ -71,7 +73,6 @@ class GymRunner(Runner):
                     evaluate_rewards.append(evaluate_reward)
                     done = True
                     print("evaluate_num:{} \t evaluate_reward:{} \t".format(evaluate_num, evaluate_reward))
-
 
     def evaluate_policy(self, env):
         times = 3

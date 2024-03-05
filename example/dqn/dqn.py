@@ -5,8 +5,10 @@ from wiserl.env import make_env, WsEnv
 import time
 import argparse
 import configparser
-
-wise_rl = WiseRL()
+use_ray = False
+if use_ray:
+    wise_rl = WiseRL()
+# wise_rl = WiseRL()
 class GymRunner(Runner):
     def __init__(self, args, local_rank=0):
         self.local_rank = local_rank
@@ -17,11 +19,13 @@ class GymRunner(Runner):
         setattr(self.config, 'state_dim', self.env.state_dim)
         setattr(self.config, 'action_dim', self.env.action_dim)
         self.total_steps = 0
-        if local_rank == 0:
-            wise_rl.make_agent(name=self.agent_name, agent_class=DqnAgent, config=self.config)
+        if use_ray:
+            if local_rank == 0:
+                wise_rl.make_agent(name=self.agent_name, agent_class=DqnAgent, config=self.config)
+                self.agent = wise_rl.get_agent(self.agent_name)
             self.agent = wise_rl.get_agent(self.agent_name)
         else:
-            self.agent = wise_rl.get_agent(self.agent_name)
+            self.agent = DqnAgent(self.config)
 
     def run(self):
         start = time.time()
@@ -71,5 +75,9 @@ if __name__ == '__main__':
     parser.add_argument("--set_adam_eps", type=float, default=True, help="Trick 9: set Adam epsilon=1e-5")
     parser.add_argument("--use_tanh", type=float, default=True, help="Trick 10: tanh activation function")
     args = parser.parse_args()
-    runners = wise_rl.make_runner("runner", GymRunner, args, num=5)
-    wise_rl.start_all_runner(runners)
+    if use_ray:
+        runners = wise_rl.make_runner("runner", GymRunner, args, num=5)
+        wise_rl.start_all_runner(runners)
+    else:
+        runners = GymRunner(args)
+        runners.run()

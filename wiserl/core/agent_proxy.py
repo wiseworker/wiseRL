@@ -2,13 +2,11 @@
 import ray
 
 class AgentProxy(object):
-
     def __init__(self, agent,copy_agent=None):
         self.agent = agent
         self.copy_agent = copy_agent
        
     def choose_action(self, *args,**kwargs):
-        result = None
         if self.copy_agent != None:
             return ray.get(self.copy_agent.choose_action.remote(*args , **kwargs))
         else:

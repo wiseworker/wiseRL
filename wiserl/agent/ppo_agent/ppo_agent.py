@@ -12,6 +12,7 @@ from torch.distributions import Categorical
 class PPOAgent(Agent):
     def __init__(self, config, sync=True):
         # if cfg != None:
+        
         #    init_params(cfg)
         self.batch_size = config.batch_size
         self.mini_batch_size = config.mini_batch_size

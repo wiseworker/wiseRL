@@ -23,11 +23,18 @@ def make_env(name):
         action_dim = env.action_space.n  # 2 actions
         state_dim = env.observation_space.shape[0]  # 4 states
         return WsEnv(env,name,action_dim,state_dim)
-    if name == 'simple_spread_v3':
+    elif name == 'simple_spread_v3':
         env = simple_spread_v3.parallel_env(render_mode=None)
         action_dim = 5
         state_dim = 18
         return WsEnv(env,name ,action_dim,state_dim)
+    elif name == 'Pendulum-v1':
+        env = gym.make("Pendulum-v1")
+        action_dim = env.action_space.shape[0]
+        state_dim = env.observation_space.shape[0]
+        return WsEnv(env,name,action_dim,state_dim)
+    else:
+        raise Exception("No such environment.")
 
 
 

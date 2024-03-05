@@ -1,7 +1,7 @@
 import torch
-from wiserl.net.nn_net import ActorDiscretePPO, ActorPPO
+from wiserl.net.nn_net import ActorDiscretePPO, ActorPPO, ActorDDPG, CriticDDPG
 from wiserl.net.nn_net import CriticPPO
-
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def get_optimizer(optimizer, model, lr):
     if optimizer == "adam":
@@ -23,9 +23,13 @@ def make_actor_net(net_name, config):
         return ActorDiscretePPO(config.net_dims, config.state_dim, config.action_dim)
     if net_name == "nn":
         return ActorPPO(config.net_dims, config.state_dim, config.action_dim)
+    if net_name == "ddpg_nn":
+        return ActorDDPG(config.state_dim, config.hidden_dim, config.action_dim, config.action_bound).to(device)
     raise Exception("no such actor network")
 
 def make_critic_net(net_name, config):
     if net_name == "nn":
         return CriticPPO(config.net_dims, config.state_dim, config.action_dim)
+    if net_name == "ddpg_nn":
+        return CriticDDPG(config.state_dim, config.hidden_dim, config.action_dim).to(device)
     raise Exception("no such critic network")

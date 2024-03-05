@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch import Tensor
 from torch.distributions.normal import Normal
 
@@ -208,29 +209,22 @@ class ActorBase(nn.Module):
 
 
 class Actor(ActorBase):
-    def __init__(self, dims: [int], state_dim: int, action_dim: int):
+    def __init__(self, dims: [int], state_dim: int, action_dim: int, action_bound: float):
         super().__init__(state_dim=state_dim, action_dim=action_dim)
         self.net = build_mlp(dims=[state_dim, *dims, action_dim])
         layer_init_with_orthogonal(self.net[-1], std=0.1)
-
+        self.action_bound = action_bound
         self.explore_noise_std = 0.1  # standard deviation of exploration action noise
 
     def forward(self, state: Tensor) -> Tensor:
-        state = self.state_norm(state)
-        return self.net(state).tanh()  # action.tanh()
+        x = self.state_norm(state)
+        return self.net(x).tanh() * self.action_bound
 
     def get_action(self, state: Tensor) -> Tensor:  # for exploration
         state = self.state_norm(state)
         action = self.net(state).tanh()
         noise = (torch.randn_like(action) * self.explore_noise_std).clamp(-0.5, 0.5)
-        return (action + noise).clamp(-1.0, 1.0)
-
-    def get_action_noise(self, state: Tensor, action_std: float) -> Tensor:
-        state = self.state_norm(state)
-        action = self.net(state).tanh()
-        noise = (torch.randn_like(action) * action_std).clamp(-0.5, 0.5)
-        return (action + noise).clamp(-1.0, 1.0)
-
+        return (action + noise).clamp(-1 * action_bound, action_bound)
 
 class ActorSAC(ActorBase):
     def __init__(self, dims: [int], state_dim: int, action_dim: int):
@@ -393,9 +387,34 @@ class Critic(CriticBase):
     def forward(self, state: Tensor, action: Tensor) -> Tensor:
         state = self.state_norm(state)
         values = self.net(torch.cat((state, action), dim=1))
-        values = self.value_re_norm(values)
-        return values.squeeze(dim=1)  # q value
+        # values = self.value_re_norm(values)
+        return values  # q value
 
+
+class ActorDDPG(torch.nn.Module):
+    def __init__(self, state_dim, hidden_dim, action_dim, action_bound):
+        super(ActorDDPG, self).__init__()
+        self.fc1 = torch.nn.Linear(state_dim, hidden_dim)
+        self.fc2 = torch.nn.Linear(hidden_dim, action_dim)
+        self.action_bound = action_bound 
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        return torch.tanh(self.fc2(x)) * self.action_bound
+
+
+class CriticDDPG(torch.nn.Module):
+    def __init__(self, state_dim, hidden_dim, action_dim):
+        super(CriticDDPG, self).__init__()
+        self.fc1 = torch.nn.Linear(state_dim + action_dim, hidden_dim)
+        self.fc2 = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.fc_out = torch.nn.Linear(hidden_dim, 1)
+
+    def forward(self, x, a):
+        cat = torch.cat([x, a], dim=1) # 拼接状态和动作
+        x = F.relu(self.fc1(cat))
+        x = F.relu(self.fc2(x))
+        return self.fc_out(x)
 
 class CriticTwin(CriticBase):  # shared parameter
     def __init__(self, dims: [int], state_dim: int, action_dim: int):

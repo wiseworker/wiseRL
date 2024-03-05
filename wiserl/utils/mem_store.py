@@ -18,7 +18,7 @@ class MemoryStore:
         self.memory[index, :] = transition
         self.memory_counter += 1
 
-    def sample(self, batch_size, state_dim):
+    def sample(self, batch_size, state_dim, action_dim):
         sample_index = np.random.choice(self.capacity, batch_size)  # randomly select some data from buffer
         # extract experiences of batch size from buffer.
         b_memory = self.memory[sample_index, :]
@@ -26,8 +26,8 @@ class MemoryStore:
         # that are convenient to back propagation
         b_s = Variable(torch.FloatTensor(b_memory[:, :state_dim]))
         # convert long int type to tensor
-        b_a = Variable(torch.LongTensor(b_memory[:, state_dim:state_dim + 1].astype(int)))
-        b_r = Variable(torch.FloatTensor(b_memory[:, state_dim + 1:state_dim + 2]))
+        b_a = Variable(torch.LongTensor(b_memory[:, state_dim:state_dim + action_dim].astype(int)))
+        b_r = Variable(torch.FloatTensor(b_memory[:, state_dim + action_dim:state_dim + 2]))
         b_done_ = Variable(torch.FloatTensor(b_memory[:,state_dim + 2:state_dim + 3]))
         b_s_ = Variable(torch.FloatTensor(b_memory[:, -state_dim: ]))
         
