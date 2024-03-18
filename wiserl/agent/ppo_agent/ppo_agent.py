@@ -1,19 +1,12 @@
 import torch
-import torch.nn as nn
 import numpy as np
 from wiserl.core.agent import Agent
 import torch.nn.functional as F
-from wiserl.agent.agent_utils import get_optimizer, make_actor_net, make_critic_net
-from  wiserl.agent.ppo_agent.ppo_config import init_params
-import wiserl.agent.ppo_agent.ppo_config as config 
+from wiserl.agent.agent_utils import make_actor_net, make_critic_net
 from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
-from torch.distributions import Categorical
 
 class PPOAgent(Agent):
     def __init__(self, config, sync=True):
-        # if cfg != None:
-        
-        #    init_params(cfg)
         self.batch_size = config.batch_size
         self.mini_batch_size = config.mini_batch_size
         self.max_train_steps = config.max_train_steps
@@ -29,6 +22,7 @@ class PPOAgent(Agent):
         self.use_lr_decay = config.use_lr_decay
         self.use_reward_norm = config.use_reward_norm
         self.use_adv_norm = config.use_adv_norm
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.actor = make_actor_net("dis_nn", config) # [dis_nn, nn]
         self.critic = make_critic_net("nn", config)   # [nn]
@@ -47,10 +41,10 @@ class PPOAgent(Agent):
         return a
 
     def choose_action(self, s):
-        s = torch.unsqueeze(torch.tensor(s, dtype=torch.float), 0)
+        s = torch.tensor(s, dtype=torch.float).to(self.device)
         with torch.no_grad():
            a, p = self.actor.get_action(s)
-           return a.item(), p 
+           return a, p
 
     def compute_advantage(self, gamma, lmbda, td_delta):
         td_delta = td_delta.detach().numpy()
@@ -69,7 +63,14 @@ class PPOAgent(Agent):
             'dw=True' means dead or win, there is no next state s'
             'done=True' represents the terminal of an episode(dead or win or reaching the max_episode_steps). When calculating the adv, if done=True, gae=0
         """
-        adv = []
+        s = np.reshape(s, (-1, s.shape[-1]))
+        a = np.reshape(a, (-1, a.shape[-1]))
+        a_logprob = np.reshape(a_logprob, (-1, a_logprob.shape[-1]))
+        r = np.reshape(r, (-1, r.shape[-1]))
+        s_ = np.reshape(s_, (-1, s_.shape[-1]))
+        dw = np.reshape(dw, (-1, dw.shape[-1]))
+        done = np.reshape(done, (-1, done.shape[-1]))
+
         if self.use_reward_norm:  # Trick 3:reward normalization
             normalized_rewards = np.zeros_like(r, dtype=np.float32)
             cumulative_reward = 0.0
@@ -95,14 +96,13 @@ class PPOAgent(Agent):
         for _ in range(self.K_epochs):
             # Random sampling and no repetition. 'False' indicates that training will continue even if the number of samples in the last time is less than mini_batch_size
             for index in BatchSampler(SubsetRandomSampler(range(self.batch_size)), self.mini_batch_size, False):
-                # a_logprob_now = dist_now.log_prob(a[index].squeeze()).view(-1, 1)  # shape(mini_batch_size X 1)
                 a_logprob_now = torch.log(self.actor(s[index]).gather(1, a[index]))
-                ratios = torch.exp(a_logprob_now - old_log_prob[index])  # shape(mini_batch_size X 1)
+                ratios = torch.exp(a_logprob_now - old_log_prob[index])
 
                 surr1 = ratios * adv[index]  # Only calculate the gradient of 'a_logprob_now' in ratios
                 surr2 = torch.clamp(ratios, 1 - self.epsilon, 1 + self.epsilon) * adv[index]
-                actor_loss = torch.mean(-torch.min(surr1, surr2))  # shape(mini_batch_size X 1)- self.entropy_coef * dist_entropy
-                # Update actor
+                actor_loss = torch.mean(-torch.min(surr1, surr2))
+
                 self.optimizer_actor.zero_grad()
                 actor_loss.backward()
                 if self.use_grad_clip:  # Trick 7: Gradient clip

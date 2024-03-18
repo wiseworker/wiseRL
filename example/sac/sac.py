@@ -37,7 +37,7 @@ class GymRunner(Runner):
             state, _ = self.env.reset()
             for t in range(cfg.max_steps):
                 action = self.agent.choseAction(state)
-                # next_state, reward, done, _, _ = env.step(np.float32(action))
+                # next_state, reward, done, _, _ = envs.step(np.float32(action))
                 next_state, reward, done, _, _ = self.env.step(action)
                 ep_r += reward
                 self.agent.update(state, action, reward, next_state, done)

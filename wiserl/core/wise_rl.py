@@ -1,5 +1,4 @@
 # -- coding: utf-8 --
-
 import ray
 import time
 import uuid
@@ -13,10 +12,14 @@ import os
 #ray.init()
 
 class WiseRL(object):
-    def __init__(self):
-        self.registre =  RegistreServer.remote()
+    def __init__(self, use_ray=False):
+        self.use_ray = use_ray
+        if self.use_ray:
+            self.registre = RegistreServer.remote()
+        else:
+            self.registre = None
 
-    def make_runner(self, name,Runner,args=None,num =1,resource=None):
+    def make_runner(self, name, Runner, args=None, num=1,resource=None):
         for i in range(num):
             runner =ray.remote(Runner)
             if resource != None:
@@ -43,7 +46,7 @@ class WiseRL(object):
             copy_agent.set_registre.remote(self.registre) 
 
         for i in range(num):
-            agent =ray.remote(agent_class)
+            agent = ray.remote(agent_class)
             if resource != None:
                 agent = agent.options(**resource)
             agent = agent.remote(config,sync)

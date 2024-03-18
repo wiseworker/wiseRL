@@ -1,10 +1,9 @@
 from wiserl.core.runner import Runner
 from wiserl.agent.dqn_agent.dqn_agent import DqnAgent
 from wiserl.core.wise_rl import WiseRL
-from wiserl.env import make_env, WsEnv , save_gym_state
+from wiserl.envs.env import make_env, save_gym_state
 import time
 import argparse
-import configparser
 
 wise_rl = WiseRL()
 class GymRunner(Runner):

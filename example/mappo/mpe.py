@@ -2,17 +2,11 @@ import torch
 import numpy as np
 import argparse
 from wiserl.utils.replay_buffer import ReplayBuffer
-import time
-import configparser
-import os
 from wiserl.core.runner import Runner
 from wiserl.agent.ppo_agent.ppo2_agent import PPO2Agent
-from wiserl.net.dnn_net import DNNNet
 from wiserl.core.wise_rl import WiseRL
-from wiserl.env import make_env
+from wiserl.envs.env import make_env
 from wiserl.utils.normalization import Normalization, RewardScaling
-from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
-import array 
 
 wise_rl = WiseRL()
 
@@ -80,7 +74,7 @@ class GymRunner(Runner):
                         rewards[agent] = reward_scaling(rewards[agent])
                 
                 done = False if self.ws_env.env.agents  else True
-                #print("done", done,self.ws_env.env.agents)
+                #print("done", done,self.ws_env.envs.agents)
                 # When dead or win or reaching the max_episode_steps, done will be Ture, we need to distinguish them;
                 # dw means dead or win,there is no next state s';
                 # but when reaching the max_episode_steps,there is a next state s' actually.

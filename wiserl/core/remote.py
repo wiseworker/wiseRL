@@ -17,13 +17,13 @@ def {f}(self,*args,**kwargs):
 	return func
 
 class Remote(object):
-    def __init__(self,obj):
-        self.obj = obj
-        self.setFunc()
-    def setFunc(self):
-	    for i in dir(self.obj):
-		    func = createFun(i)
-		    self.__setattr__(i,MethodType(func,self))
+	def __init__(self,obj):
+		self.obj = obj
+		self.setFunc()
+	def	setFunc(self):
+		for i in dir(self.obj):
+			func = createFun(i)
+			self.__setattr__(i,MethodType(func,self))
 
 
  

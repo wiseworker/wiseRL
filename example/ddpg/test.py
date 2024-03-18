@@ -10,7 +10,7 @@ from torch.distributions import Normal
 from itertools import count
 
 # Define hyperparameters
-ENV_NAME = "Pendulum-v1" # gym env
+ENV_NAME = "Pendulum-v1" # gym envs
 BATCH_SIZE = 100 # mini-batch size when sampled from buffer
 MEM_CAPACTIY = 10000 # Replay buffer size
 EPISODES = 200

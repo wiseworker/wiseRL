@@ -1,10 +1,10 @@
 from wiserl.core.runner import Runner
 from wiserl.agent.dqn_agent.dqn_agent import DqnAgent
 from wiserl.core.wise_rl import WiseRL
-from wiserl.env import make_env, WsEnv
+from wiserl.envs.env import make_env
 import time
 import argparse
-import configparser
+
 use_ray = False
 if use_ray:
     wise_rl = WiseRL()

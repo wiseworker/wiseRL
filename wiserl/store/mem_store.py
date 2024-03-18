@@ -1,9 +1,7 @@
 import numpy as np
 from torch.autograd import Variable
 import torch
-import random
 import ray
-
 
 class MemoryStore:
     def __init__(self, capacity, size):
@@ -52,31 +50,28 @@ class MemoryStore:
 
 
 class ReplayBuffer:
-    def __init__(self, capacity, state_dim, action_dim=1, log_prob_dim=1, reward_dim=1):
+    def __init__(self, capacity, state_dim, action_dim=1, log_prob_dim=1, reward_dim=1, n_rollout_threads=1):
         self.capacity = capacity
         self.memory_counter = 0
-
-        self.state = np.zeros((capacity, state_dim))
-        self.next_state = np.zeros((capacity, state_dim))
-        self.action = np.zeros((capacity, action_dim))
-        self.log_prob = np.zeros((capacity, log_prob_dim))
-        self.reward = np.zeros((capacity, reward_dim))
-        self.done = np.zeros((capacity, 1))
+        self.n_agnets = 1
+        self.state = np.zeros((capacity, n_rollout_threads, state_dim))
+        self.next_state = np.zeros((capacity, n_rollout_threads, state_dim))
+        self.action = np.zeros((capacity, n_rollout_threads, action_dim))
+        self.log_prob = np.zeros((capacity, n_rollout_threads, log_prob_dim))
+        self.reward = np.zeros((capacity, n_rollout_threads, reward_dim))
+        self.done = np.zeros((capacity, n_rollout_threads, 1))
 
     def store(self, s, a, r, s_, log_prob=None, done=None):
         index = self.memory_counter % self.capacity
-
-        self.state[index] = s
-        self.action[index] = a
-        self.reward[index] = r
-        self.next_state[index] = s_
-
+        for i in range(self.n_agnets):
+            self.state[index] = s[:, i, :]
+            self.action[index] = a[:, i, :]
+            self.next_state[index] = s_[:, i, :]
         if log_prob is not None:
             self.log_prob[index] = log_prob
-
         if done is not None:
-            self.done[index] = done
-
+            self.done[index] = np.reshape(done, (done.shape[0], 1))
+        self.reward[index] = np.reshape(r, (r.shape[0], 1))
         self.memory_counter += 1
 
     def sample(self, batch_size):

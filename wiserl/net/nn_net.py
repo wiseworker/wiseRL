@@ -332,14 +332,15 @@ class ActorDiscretePPO(ActorBase):
         state = self.state_norm(state)
         a_prob = self.net(state)  # action_prob without softmax
         return self.soft_max(a_prob)
-             # a_prob.argmax(dim=1)  # get the indices of discrete action
 
     def get_action(self, state: Tensor) -> (Tensor, Tensor):
         state = self.state_norm(state)
         a_prob = self.soft_max(self.net(state))
-        a_dist = self.ActionDist(a_prob)
+        a_dist = self.ActionDist(probs=a_prob)
         action = a_dist.sample()
         logprob = a_dist.log_prob(action)
+        action = action.reshape((action.shape[0], action.shape[1], 1))
+        logprob = logprob.reshape((logprob.shape[0], logprob.shape[1], 1))
         return action, logprob
 
     def get_logprob_entropy(self, state: Tensor, action: Tensor) -> (Tensor, Tensor):
@@ -392,14 +393,15 @@ class Critic(CriticBase):
 
 
 class ActorDDPG(torch.nn.Module):
-    def __init__(self, state_dim, hidden_dim, action_dim, action_bound):
+    def __init__(self, state_space, hidden_dim, action_space, action_bound):
         super(ActorDDPG, self).__init__()
-        self.fc1 = torch.nn.Linear(state_dim, hidden_dim)
-        self.fc2 = torch.nn.Linear(hidden_dim, action_dim)
+        self.fc1 = torch.nn.Linear(state_space, hidden_dim)
+        self.fc2 = torch.nn.Linear(hidden_dim, action_space)
         self.action_bound = action_bound 
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
+        x = self.fc1(x)
+        x = F.relu(x)
         return torch.tanh(self.fc2(x)) * self.action_bound
 
 

@@ -7,7 +7,7 @@ import numpy as np
 
 class CNNActor(nn.Module):
     def __init__(self, input_channels, n_actions):
-        super(DQNCNN, self).__init__()
+        super(CNNActor, self).__init__()
         self.conv1 = nn.Conv2d(input_channels, 32, kernel_size=8, stride=4)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
         self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
@@ -26,7 +26,7 @@ class CNNActor(nn.Module):
 
 class CNNCritic(nn.Module):
     def __init__(self, args):
-        super(Critic, self).__init__()
+        super(CNNCritic, self).__init__()
         self.fc1 = nn.Linear(args.state_dim, args.hidden_width)
         self.fc2 = nn.Linear(args.hidden_width, args.hidden_width)
         self.fc3 = nn.Linear(args.hidden_width, 1)

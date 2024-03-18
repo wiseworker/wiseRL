@@ -1,7 +1,6 @@
 # -- coding: utf-8 --
 
 import ray
-from wiserl.core.remote import Remote
 from .runner_proxy import RunnerProxy
 from .agent_proxy import AgentProxy
 
@@ -72,19 +71,12 @@ class RegistreServer(object):
             runner = self.runner_index[index]
         runner = self._create_remote_runner(runner)
         return runner
- 
-    
+
     def get_all_runner(self,name):
         print("runner",self.runner_dict)
         runners = self.runner_dict[name]
-        # remote_runners = []
-        # for runner in runners:
-        #     #runner = self._createRemoteRunner(runner)
-        #     remote_runners.append(runner)
         return runners
 
-    
-      
     def _create_remote_agent(self,agent, copy_agent):
         remoteAgent = AgentProxy(agent ,copy_agent)
         return remoteAgent

@@ -1,18 +1,11 @@
 import torch
 import numpy as np
 import gym
-import argparse
 from wiserl.utils.replay_buffer import ReplayBuffer
-import time
-import configparser
-import os
 from wiserl.core.runner import Runner
 from wiserl.agent.ppo_agent.ppo2_agent import PPO2Agent
-from wiserl.net.dnn_net import DNNNet
 from wiserl.core.wise_rl import WiseRL
-from wiserl.env import make_env
 from wiserl.utils.normalization import Normalization, RewardScaling
-from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 
 wise_rl = WiseRL()
 
@@ -66,10 +59,10 @@ class GymRunner(Runner):
         self.state_norm = Normalization(shape=self.net_cfg['state_dim'])  # Trick 2:state normalization
 
 
-    # args.state_dim = env.observation_space.shape[0]
-    # args.action_dim = env.action_space.n
-    # args.max_episode_steps = env._max_episode_steps  # Maximum number of steps per episode
-    # print("env={}".format(env_name))
+    # args.state_dim = envs.observation_space.shape[0]
+    # args.action_dim = envs.action_space.n
+    # args.max_episode_steps = envs._max_episode_steps  # Maximum number of steps per episode
+    # print("envs={}".format(env_name))
     # print("state_dim={}".format(args.state_dim))
     # print("action_dim={}".format(args.action_dim))
     # print("max_episode_steps={}".format(args.max_episode_steps))

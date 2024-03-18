@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/envs python
 # -*- coding: utf-8 -*-
 try:
     from setuptools import setup,find_packages

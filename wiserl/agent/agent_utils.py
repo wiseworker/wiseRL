@@ -20,16 +20,16 @@ def get_optimizer(optimizer, model, lr):
    
 def make_actor_net(net_name, config):
     if net_name == "dis_nn":
-        return ActorDiscretePPO(config.net_dims, config.state_dim, config.action_dim)
+        return ActorDiscretePPO(config.net_dims, config.state_space, config.action_space)
     if net_name == "nn":
-        return ActorPPO(config.net_dims, config.state_dim, config.action_dim)
+        return ActorPPO(config.net_dims, config.state_space, config.action_space)
     if net_name == "ddpg_nn":
-        return ActorDDPG(config.state_dim, config.hidden_dim, config.action_dim, config.action_bound).to(device)
+        return ActorDDPG(config.state_space, config.hidden_dim, config.action_space, config.action_bound).to(device)
     raise Exception("no such actor network")
 
 def make_critic_net(net_name, config):
     if net_name == "nn":
-        return CriticPPO(config.net_dims, config.state_dim, config.action_dim)
+        return CriticPPO(config.net_dims, config.state_space, config.action_space)
     if net_name == "ddpg_nn":
-        return CriticDDPG(config.state_dim, config.hidden_dim, config.action_dim).to(device)
+        return CriticDDPG(config.state_space, config.hidden_dim, config.action_space).to(device)
     raise Exception("no such critic network")
