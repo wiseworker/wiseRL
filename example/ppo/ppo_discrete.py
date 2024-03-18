@@ -26,7 +26,7 @@ class GymRunner(Runner):
         setattr(self.config, 'n_rollout_threads', self.n_rollout_threads)
         if self.use_ray:
             if self.local_rank == 0:
-                wise_rl.make_agent(name=self.agent_name, agent_class=PPOAgent, config=self.config, sync=False)
+                wise_rl.make_agent(name=self.agent_name, agent_class=PPOAgent, config=self.config, sync=True)
             self.agent = wise_rl.get_agent(self.agent_name)
         else:
             self.agent = PPOAgent(self.config, sync=False)
