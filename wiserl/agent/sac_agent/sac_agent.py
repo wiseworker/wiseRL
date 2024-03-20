@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch import optim
 from torch.distributions import Normal
 from wiserl.core.agent import Agent
-import wiserl.agent.sac_agent.config as cfg
+from wiserl.agent.agent_utils import get_optimizer, make_actor_net, make_critic_net
 from wiserl.store.mem_store import ReplayBuffer
 import os
 
@@ -11,18 +11,19 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 class SACAgent(Agent):
-    def __init__(self, Actor, Critic, Q_net, state_dim, action_dim, config=None, sync=False):
-        super(SACAgent, self).__init__(sync)
+    def __init__(self, sync=False, **kwargs):
+        super().__init__(sync)
+        self.__dict__.update(kwargs)
 
-        self.policy_net = Actor(state_dim).to(device)
-        self.value_net = Critic(state_dim).to(device)
-        self.Q_net = Q_net(state_dim, action_dim).to(device)
-        self.Target_value_net = Critic(state_dim).to(device)
-
-        self.replay_buffer = ReplayBuffer(cfg.MEMORY_CAPACITY, state_dim, action_dim)
-        self.policy_optimizer = optim.Adam(self.policy_net.parameters(), lr=cfg.learning_rate)
-        self.value_optimizer = optim.Adam(self.value_net.parameters(), lr=cfg.learning_rate)
-        self.Q_optimizer = optim.Adam(self.Q_net.parameters(), lr=cfg.learning_rate)
+        self.policy_net = make_actor_net("sac_nn", dict({"state_dim":self.state_dim}))
+        self.value_net, self.Target_value_net = make_critic_net("sac_nn", dict({"state_dim":self.state_dim})),\
+                                                make_critic_net("sac_nn", dict({"state_dim":self.state_dim}))
+        self.Q_net = make_critic_net("q_nn", dict({"state_dim":self.state_dim, "action_dim":self.action_dim}))
+    
+        self.replay_buffer = ReplayBuffer(self.MEMORY_CAPACITY, self.state_dim, self.action_dim)
+        self.policy_optimizer = optim.Adam(self.policy_net.parameters(), lr=self.lr)
+        self.value_optimizer = optim.Adam(self.value_net.parameters(), lr=self.lr)
+        self.Q_optimizer = optim.Adam(self.Q_net.parameters(), lr=self.lr)
         self.num_transition = 0  # pointer of replay buffer
         self.num_training = 1
 
@@ -34,7 +35,7 @@ class SACAgent(Agent):
 
         os.makedirs('./SAC_model/', exist_ok=True)
 
-    def choseAction(self, state):
+    def choose_action(self, state):
         state = torch.FloatTensor(state).to(device)
         mu, log_sigma = self.policy_net(state)
         sigma = torch.exp(log_sigma)
@@ -51,7 +52,7 @@ class SACAgent(Agent):
         dist = Normal(batch_mu, batch_sigma)
         z = dist.sample()
         action = torch.tanh(z)
-        log_prob = dist.log_prob(z) - torch.log(1 - action.pow(2) + cfg.min_Val)
+        log_prob = dist.log_prob(z) - torch.log(1 - action.pow(2) + self.min_Val)
         return action, log_prob, z, batch_mu, batch_log_sigma
 
     def update(self, s, a, r, s_, d):
@@ -61,17 +62,17 @@ class SACAgent(Agent):
         if self.num_training % 500 == 0:
             print("Training ... {} ".format(self.num_training))
 
-        if self.replay_buffer.memory_counter >= cfg.MEMORY_CAPACITY:
-            for _ in range(cfg.gradient_steps):
+        if self.replay_buffer.memory_counter >= self.MEMORY_CAPACITY:
+            for _ in range(self.gradient_steps):
 
-                buffer = self.replay_buffer.sample(cfg.batch_size)
+                buffer = self.replay_buffer.sample(self.batch_size)
                 bn_s = buffer['state'].to(torch.float32).to(device)
                 bn_a = buffer['action'].to(torch.float32).to(device)
                 bn_r = buffer['reward'].to(torch.float32).to(device)
                 bn_s_ = buffer['next_state'].to(torch.float32).to(device)
                 bn_d = buffer['done'].to(torch.float32).to(device)
                 target_value = self.Target_value_net(bn_s_)
-                next_q_value = bn_r + (1 - bn_d) * cfg.gamma * target_value
+                next_q_value = bn_r + (1 - bn_d) * self.gamma * target_value
 
                 excepted_value = self.value_net(bn_s)
                 excepted_Q = self.Q_net(bn_s, bn_a)
@@ -113,9 +114,11 @@ class SACAgent(Agent):
 
                 # soft update
                 for target_param, param in zip(self.Target_value_net.parameters(), self.value_net.parameters()):
-                    target_param.data.copy_(target_param * (1 - cfg.tau) + param * cfg.tau)
+                    target_param.data.copy_(target_param * (1 - self.tau) + param * self.tau)
 
                 self.num_training += 1
+        if self.sync == False:
+            self._sync_model()
 
     def save(self):
         torch.save(self.policy_net.state_dict(), './SAC_model/policy_net.pth')
@@ -130,3 +133,14 @@ class SACAgent(Agent):
         torch.load(self.value_net.state_dict(), './SAC_model/value_net.pth')
         torch.load(self.Q_net.state_dict(), './SAC_model/Q_net.pth')
         print()
+
+    def _sync_model(self):
+        param = self.policy_net.state_dict()
+        if device.type != "cpu":
+            for name, mm in param.items():
+                param[name]= mm.cpu()
+        self._fire(param)
+    
+    # def _update_model(self,param):
+    #     self.actor.load_state_dict(param)
+    #     self.actor_target.load_state_dict(param)

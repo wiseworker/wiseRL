@@ -1,0 +1,7 @@
+README.md
+setup.py
+wiserl.egg-info/PKG-INFO
+wiserl.egg-info/SOURCES.txt
+wiserl.egg-info/dependency_links.txt
+wiserl.egg-info/requires.txt
+wiserl.egg-info/top_level.txt

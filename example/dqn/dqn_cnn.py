@@ -16,7 +16,7 @@ class GymRunner(Runner):
         setattr(self.config, 'state_dim', self.env.state_dim)
         setattr(self.config, 'action_dim', self.env.action_dim)
         stack_size = 4
-        self.stacked_frames  =  deque([np.zeros((84,84), dtype=np.int) for i in range(stack_size)], maxlen=4)
+        self.stacked_frames = deque([np.zeros((84,84), dtype=np.int) for i in range(stack_size)], maxlen=4)
         self.total_steps = 0
         if local_rank == 0:
             wise_rl.make_agent(name=self.agent_name, agent_class=DqnAgent,config = self.config)
@@ -24,7 +24,13 @@ class GymRunner(Runner):
         else:
             self.agent = wise_rl.get_agent(self.agent_name)
 
-
+    def preprocess_frame(frame):
+        gray = rgb2gray(frame)
+        #crop the frame
+        #cropped_frame = gray[:,:]
+        normalized_frame = gray/255.0
+        preprocessed_frame = transform.resize(normalized_frame, [84,84])
+        return preprocessed_frame
 
     def stack_frames(stacked_frames, state, is_new_episode):
         # Preprocess frame

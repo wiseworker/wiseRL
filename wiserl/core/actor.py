@@ -13,7 +13,6 @@ class Actor(object):
 
     def get_registre(self):
         return self.registre
-
      
     def _createRemoteActor(self,actor):
         remoteActor = Remote(actor)
