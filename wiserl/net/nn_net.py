@@ -1,8 +1,14 @@
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch import Tensor
-from torch.distributions.normal import Normal
+from torch.distributions import Beta, Normal
+import os
+import torch as T
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 
 
 def build_mlp(dims: [int], activation: nn = None, if_raw_out: bool = True) -> nn.Sequential:
@@ -190,6 +196,47 @@ class QNetTwinDuel(QNetBase):  # D3QN: Dueling Double DQN
 
 """Actor (policy network)"""
 
+class ActorContinuousPPO(nn.Module):
+	def __init__(self, state_dim, action_dim, net_width):
+		super(ActorContinuousPPO, self).__init__()
+
+		self.l1 = nn.Linear(state_dim, net_width)
+		self.l2 = nn.Linear(net_width, net_width)
+		self.alpha_head = nn.Linear(net_width, action_dim)
+		self.beta_head = nn.Linear(net_width, action_dim)
+
+	def forward(self, state):
+		a = torch.tanh(self.l1(state))
+		a = torch.tanh(self.l2(a))
+
+		alpha = F.softplus(self.alpha_head(a)) + 1.0
+		beta = F.softplus(self.beta_head(a)) + 1.0
+
+		return alpha, beta
+
+	def get_dist(self,state):
+		alpha,beta = self.forward(state)
+		dist = Beta(alpha, beta)
+		return dist
+
+	def deterministic_act(self, state):
+		alpha, beta = self.forward(state)
+		mode = (alpha) / (alpha + beta)
+		return mode
+
+class CriticPPO2(nn.Module):
+	def __init__(self, state_dim,net_width):
+		super(Critic, self).__init__()
+
+		self.C1 = nn.Linear(state_dim, net_width)
+		self.C2 = nn.Linear(net_width, net_width)
+		self.C3 = nn.Linear(net_width, 1)
+
+	def forward(self, state):
+		v = torch.tanh(self.C1(state))
+		v = torch.tanh(self.C2(v))
+		v = self.C3(v)
+		return v
 
 class ActorBase(nn.Module):
     def __init__(self, state_dim: int, action_dim: int):
@@ -207,123 +254,184 @@ class ActorBase(nn.Module):
         return (state - self.state_avg) / self.state_std
 
 
-class Actor(ActorBase):
-    def __init__(self, dims: [int], state_dim: int, action_dim: int):
+class ActorDDPG(ActorBase):
+    def __init__(self, dims: [int], state_dim: int, action_dim: int, action_bound: float):
         super().__init__(state_dim=state_dim, action_dim=action_dim)
         self.net = build_mlp(dims=[state_dim, *dims, action_dim])
         layer_init_with_orthogonal(self.net[-1], std=0.1)
-
+        self.action_bound = action_bound
         self.explore_noise_std = 0.1  # standard deviation of exploration action noise
 
     def forward(self, state: Tensor) -> Tensor:
-        state = self.state_norm(state)
-        return self.net(state).tanh()  # action.tanh()
-
-    def get_action(self, state: Tensor) -> Tensor:  # for exploration
-        state = self.state_norm(state)
-        action = self.net(state).tanh()
-        noise = (torch.randn_like(action) * self.explore_noise_std).clamp(-0.5, 0.5)
-        return (action + noise).clamp(-1.0, 1.0)
-
-    def get_action_noise(self, state: Tensor, action_std: float) -> Tensor:
-        state = self.state_norm(state)
-        action = self.net(state).tanh()
-        noise = (torch.randn_like(action) * action_std).clamp(-0.5, 0.5)
-        return (action + noise).clamp(-1.0, 1.0)
+        x = self.state_norm(state)
+        return self.net(x).tanh() * self.action_bound
 
 
-class ActorSAC(ActorBase):
-    def __init__(self, dims: [int], state_dim: int, action_dim: int):
-        super().__init__(state_dim=state_dim, action_dim=action_dim)
-        self.net_s = build_mlp(dims=[state_dim, *dims], if_raw_out=False)  # network of encoded state
-        self.net_a = build_mlp(dims=[dims[-1], action_dim * 2])  # the average and log_std of action
+class ActorSAC(nn.Module):
+    def __init__(self, state_dim, min_log_std=-20, max_log_std=2):
+        super(ActorSAC, self).__init__()
+        self.fc1 = nn.Linear(state_dim, 256)
+        self.fc2 = nn.Linear(256, 256)
+        self.mu_head = nn.Linear(256, 1)
+        self.log_std_head = nn.Linear(256, 1)
 
-        layer_init_with_orthogonal(self.net_a[-1], std=0.1)
+        self.min_log_std = min_log_std
+        self.max_log_std = max_log_std
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        mu = self.mu_head(x)
+        log_std_head = F.relu(self.log_std_head(x))
+        log_std_head = torch.clamp(log_std_head, self.min_log_std, self.max_log_std)
+        return mu, log_std_head
+
+class ActorTD3(nn.Module):
+    def __init__(self, state_dim, action_dim, action_bound):
+        super(ActorTD3, self).__init__()
+        self.fc1 = nn.Linear(state_dim, 256)
+        self.fc2 = nn.Linear(256, 128)
+        self.fc3 = nn.Linear(128, action_dim)
+        self.action_bound = action_bound
 
     def forward(self, state):
-        state = self.state_norm(state)
-        s_enc = self.net_s(state)  # encoded state
-        a_avg = self.net_a(s_enc)[:, :self.action_dim]
-        return a_avg.tanh()  # action
+        x = torch.relu(self.fc1(state))
+        x = torch.relu(self.fc2(x))
+        x = torch.tanh(self.fc3(x)) * self.action_bound
+        return x
 
-    def get_action(self, state):
-        state = self.state_norm(state)
-        s_enc = self.net_s(state)  # encoded state
-        a_avg, a_std_log = self.net_a(s_enc).chunk(2, dim=1)
-        a_std = a_std_log.clamp(-16, 2).exp()
+class CriticTD3(nn.Module):
+    def __init__(self, state_dim, action_dim):
+        super(CriticTD3, self).__init__()
 
-        dist = Normal(a_avg, a_std)
-        return dist.rsample().tanh()  # action (re-parameterize)
+        # Q1 architecture
+        self.l1 = nn.Linear(state_dim + action_dim, 256)
+        self.l2 = nn.Linear(256, 256)
+        self.l3 = nn.Linear(256, 1)
 
-    def get_action_logprob(self, state):
-        state = self.state_norm(state)
-        s_enc = self.net_s(state)  # encoded state
-        a_avg, a_std_log = self.net_a(s_enc).chunk(2, dim=1)
-        a_std = a_std_log.clamp(-16, 2).exp()
+        # Q2 architecture
+        self.l4 = nn.Linear(state_dim + action_dim, 256)
+        self.l5 = nn.Linear(256, 256)
+        self.l6 = nn.Linear(256, 1)
 
-        dist = Normal(a_avg, a_std)
-        action = dist.rsample()
+    def forward(self, state, action):
+        sa = torch.cat([state, action], 1)
+        q1 = torch.relu(self.l1(sa))
+        q1 = torch.relu(self.l2(q1))
+        q1 = self.l3(q1)
 
-        action_tanh = action.tanh()
-        logprob = dist.log_prob(a_avg)
-        logprob -= (-action_tanh.pow(2) + 1.000001).log()  # fix logprob using the derivative of action.tanh()
-        return action_tanh, logprob.sum(1)
+        q2 = torch.relu(self.l4(sa))
+        q2 = torch.relu(self.l5(q2))
+        q2 = self.l6(q2)
+        return q1, q2
+
+    def Q1(self, state, action):
+        sa = torch.cat([state, action], 1)
+        q1 = torch.relu(self.l1(sa))
+        q1 = torch.relu(self.l2(q1))
+        q1 = self.l3(q1)
+        return q1
+
+class CriticSAC(nn.Module):
+    def __init__(self, state_dim):
+        super(CriticSAC, self).__init__()
+        self.fc1 = nn.Linear(state_dim, 256)
+        self.fc2 = nn.Linear(256, 256)
+        self.fc3 = nn.Linear(256, 1)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+class SACQnet(nn.Module):
+    def __init__(self, state_dim, action_dim):
+        super(SACQnet, self).__init__()
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.fc1 = nn.Linear(state_dim + action_dim, 256)
+        self.fc2 = nn.Linear(256, 256)
+        self.fc3 = nn.Linear(256, 1)
+
+    def forward(self, s, a):
+        s = s.reshape(-1, self.state_dim)
+        a = a.reshape(-1, self.action_dim)
+        x = torch.cat((s, a), -1)  # combination s and a
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
 
 
-class ActorFixSAC(ActorSAC):
-    def __init__(self, dims: [int], state_dim: int, action_dim: int):
-        super().__init__(dims=dims, state_dim=state_dim, action_dim=action_dim)
-        self.soft_plus = torch.nn.Softplus()
+class CriticNetwork(nn.Module):
+    def __init__(self, beta, input_dims, fc1_dims, fc2_dims,
+                 n_agents, n_actions, name, chkpt_dir):
+        super(CriticNetwork, self).__init__()
 
-    def get_action_logprob(self, state):
-        state = self.state_norm(state)
-        s_enc = self.net_s(state)  # encoded state
-        a_avg, a_std_log = self.net_a(s_enc).chunk(2, dim=1)
-        a_std = a_std_log.clamp(-16, 2).exp()
+        self.chkpt_file = os.path.join(chkpt_dir, name)
 
-        dist = Normal(a_avg, a_std)
-        action = dist.rsample()
+        self.fc1 = nn.Linear(input_dims + n_agents * n_actions, fc1_dims)
+        self.fc2 = nn.Linear(fc1_dims, fc2_dims)
+        self.q = nn.Linear(fc2_dims, 1)
 
-        logprob = dist.log_prob(a_avg)
-        logprob -= 2 * (math.log(2) - action - self.soft_plus(action * -2))  # fix logprob using SoftPlus
-        return action.tanh(), logprob.sum(1)
+        self.optimizer = optim.Adam(self.parameters(), lr=beta)
+        self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
+
+        self.to(self.device)
+
+    def forward(self, state, action):
+        x = F.relu(self.fc1(T.cat([state, action], dim=1)))
+        x = F.relu(self.fc2(x))
+        q = self.q(x)
+
+        return q
+
+    def save_checkpoint(self):
+        T.save(self.state_dict(), self.chkpt_file)
+
+    def load_checkpoint(self):
+        self.load_state_dict(T.load(self.chkpt_file))
 
 
-class ActorPPO(ActorBase):
-    def __init__(self, dims: [int], state_dim: int, action_dim: int):
-        super().__init__(state_dim=state_dim, action_dim=action_dim)
-        self.net = build_mlp(dims=[state_dim, *dims, action_dim])
-        layer_init_with_orthogonal(self.net[-1], std=0.1)
+class ActorNetwork(nn.Module):
+    def __init__(self, alpha, input_dims, fc1_dims, fc2_dims,
+                 n_actions, name, chkpt_dir):
+        super(ActorNetwork, self).__init__()
 
-        self.action_std_log = nn.Parameter(torch.zeros((1, action_dim)), requires_grad=True)  # trainable parameter
+        self.chkpt_file = os.path.join(chkpt_dir, name)
 
-    def forward(self, state: Tensor) -> Tensor:
-        state = self.state_norm(state)
-        return self.net(state).tanh()  # action.tanh()
+        self.fc1 = nn.Linear(input_dims, fc1_dims)
+        self.fc2 = nn.Linear(fc1_dims, fc2_dims)
+        self.pi = nn.Linear(fc2_dims, n_actions)
 
-    def get_action(self, state: Tensor) -> (Tensor, Tensor):  # for exploration
-        state = self.state_norm(state)
-        action_avg = self.net(state)
-        action_std = self.action_std_log.exp()
+        self.optimizer = optim.Adam(self.parameters(), lr=alpha)
+        self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
 
-        dist = self.ActionDist(action_avg, action_std)
-        action = dist.sample()
-        logprob = dist.log_prob(action).sum(1)
-        return action, logprob
+        self.to(self.device)
 
-    def get_logprob_entropy(self, state: Tensor, action: Tensor) -> (Tensor, Tensor):
-        state = self.state_norm(state)
-        action_avg = self.net(state)
-        action_std = self.action_std_log.exp()
+    def forward(self, state):
+        x = F.relu(self.fc1(state))
+        x = F.relu(self.fc2(x))
+        pi = T.softmax(self.pi(x), dim=1)
 
-        dist = self.ActionDist(action_avg, action_std)
-        logprob = dist.log_prob(action).sum(1)
-        entropy = dist.entropy().sum(1)
-        return logprob, entropy
+        return pi
 
-    @staticmethod
-    def convert_action_for_env(action: Tensor) -> Tensor:
-        return action.tanh()
+    def save_checkpoint(self):
+        T.save(self.state_dict(), self.chkpt_file)
+
+    def load_checkpoint(self):
+        self.load_state_dict(T.load(self.chkpt_file))
+
+class CriticPPO2(torch.nn.Module):
+    def __init__(self, state_dim, hidden_dim):
+        super(CriticPPO2, self).__init__()
+        self.fc1 = torch.nn.Linear(state_dim, hidden_dim)
+        self.fc2 = torch.nn.Linear(hidden_dim, 1)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        return self.fc2(x)
 
 class ActorDiscretePPO(ActorBase):
     def __init__(self, dims: [int], state_dim: int, action_dim: int):
@@ -393,10 +501,36 @@ class Critic(CriticBase):
     def forward(self, state: Tensor, action: Tensor) -> Tensor:
         state = self.state_norm(state)
         values = self.net(torch.cat((state, action), dim=1))
-        values = self.value_re_norm(values)
-        return values.squeeze(dim=1)  # q value
+        # values = self.value_re_norm(values)
+        return values  # q value
 
 
+# Actor Network
+class Actor(nn.Module):
+    def __init__(self, state_dim, action_dim, action_bound):
+        super(Actor, self).__init__()
+        self.fc1 = nn.Linear(state_dim, 512)
+        self.fc2 = nn.Linear(512, action_dim)
+        self.action_bound = action_bound
+
+    def forward(self, state):
+        x = torch.relu(self.fc1(state))
+        x = torch.tanh(self.fc2(x)) * self.action_bound
+        return x
+
+class CriticDDPG(CriticBase):
+    def __init__(self, dims: [int], state_dim: int, action_dim: int):
+        super().__init__(state_dim=state_dim, action_dim=action_dim)
+        self.net = build_mlp(dims=[state_dim + action_dim, *dims, 1])
+
+        layer_init_with_orthogonal(self.net[-1], std=0.5)
+
+    def forward(self, state: Tensor, action: Tensor) -> Tensor:
+        state = self.state_norm(state)
+        values = self.net(torch.cat((state, action), dim=1))
+        # values = self.value_re_norm(values)
+        return values  # q value
+        
 class CriticTwin(CriticBase):  # shared parameter
     def __init__(self, dims: [int], state_dim: int, action_dim: int):
         super().__init__(state_dim=state_dim, action_dim=action_dim)
@@ -434,3 +568,86 @@ class CriticPPO(CriticBase):
         value = self.net(state)
         value = self.value_re_norm(value)
         return value.squeeze(1)  # q value
+
+class CriticNetwork(nn.Module):
+    def __init__(self, beta, input_dims, fc1_dims, fc2_dims,
+                 n_agents, n_actions, name, chkpt_dir):
+        super(CriticNetwork, self).__init__()
+
+        self.chkpt_file = os.path.join(chkpt_dir, name)
+
+        self.fc1 = nn.Linear(input_dims + n_agents * n_actions, fc1_dims)
+        self.fc2 = nn.Linear(fc1_dims, fc2_dims)
+        self.q = nn.Linear(fc2_dims, 1)
+
+        self.optimizer = optim.Adam(self.parameters(), lr=beta)
+        self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
+
+        self.to(self.device)
+
+    def forward(self, state, action):
+        x = F.relu(self.fc1(T.cat([state, action], dim=1)))
+        x = F.relu(self.fc2(x))
+        q = self.q(x)
+
+        return q
+
+    def save_checkpoint(self):
+        T.save(self.state_dict(), self.chkpt_file)
+
+    def load_checkpoint(self):
+        self.load_state_dict(T.load(self.chkpt_file))
+
+
+class ActorNetwork(nn.Module):
+    def __init__(self, alpha, input_dims, fc1_dims, fc2_dims,
+                 n_actions, name, chkpt_dir):
+        super(ActorNetwork, self).__init__()
+
+        self.chkpt_file = os.path.join(chkpt_dir, name)
+
+        self.fc1 = nn.Linear(input_dims, fc1_dims)
+        self.fc2 = nn.Linear(fc1_dims, fc2_dims)
+        self.pi = nn.Linear(fc2_dims, n_actions)
+
+        self.optimizer = optim.Adam(self.parameters(), lr=alpha)
+        self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
+
+        self.to(self.device)
+
+    def forward(self, state):
+        x = F.relu(self.fc1(state))
+        x = F.relu(self.fc2(x))
+        pi = T.softmax(self.pi(x), dim=1)
+
+        return pi
+
+    def save_checkpoint(self):
+        T.save(self.state_dict(), self.chkpt_file)
+
+    def load_checkpoint(self):
+        self.load_state_dict(T.load(self.chkpt_file))
+
+
+# Actor network
+class ActorTRPO(nn.Module):
+    def __init__(self, state_dim, action_dim):
+        super(ActorTRPO, self).__init__()
+        self.fc1 = nn.Linear(state_dim, 512)
+        self.fc2 = nn.Linear(512, action_dim)
+
+    def forward(self, state):
+        x = torch.relu(self.fc1(state))
+        return F.softmax(self.fc2(x), dim=1)
+
+
+# Critic network
+class CriticTRPO(nn.Module):
+    def __init__(self, state_dim):
+        super(CriticTRPO, self).__init__()
+        self.fc1 = nn.Linear(state_dim, 512)
+        self.fc2 = nn.Linear(512, 1)
+
+    def forward(self, state):
+        x = torch.relu(self.fc1(state))
+        return self.fc2(x)

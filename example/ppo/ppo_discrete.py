@@ -4,13 +4,16 @@ from wiserl.net.dnn_net import DNNNet
 from wiserl.core.wise_rl import WiseRL
 from wiserl.env import make_env
 from wiserl.utils.replay_buffer import ReplayBuffer
+from wiserl.utils.normalization import Normalization, RewardScaling
+from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
+import matplotlib.pyplot as plt
+import numpy as np
+import configparser
 import gym
 import time
 import argparse
-import configparser
 import os
-from wiserl.utils.normalization import Normalization, RewardScaling
-from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
+
 wise_rl = WiseRL()
 
 class GymRunner(Runner):
@@ -23,22 +26,27 @@ class GymRunner(Runner):
         # config setting
         setattr(self.config, 'state_dim', self.wsenv.state_dim)
         setattr(self.config, 'action_dim', self.wsenv.action_dim)
-        print(args)
-        if local_rank == 0:
-            wise_rl.make_agent(name=self.agent_name, agent_class=PPOAgent, config=self.config, sync=True)    
-        self.agent = wise_rl.get_agent(self.agent_name)
+
+        if self.local_rank == 0:
+            wise_rl.make2_agent(name=self.agent_name, agent_class=PPOAgent, sync=True, **vars(self.config))    
+        self.agent = wise_rl.getAgent(self.agent_name)
         self.state_norm = Normalization(shape=self.config.state_dim)  # Trick 2:state normalization
 
     def run(self):
         evaluate_num = 0  # Record the number of evaluations
         evaluate_rewards = []  # Record the rewards during the evaluating
         total_steps = 0  # Record the total steps during the training
+        episode_num = 0
         batch_size = 2048 if self.config.batch_size == None else int(self.config.batch_size)
-        replay_buffer = ReplayBuffer(batch_size,self.config.state_dim)
+        # replay_buffer = ReplayBuffer(batch_size,self.config.state_dim, Discrete=True)
+        replay_buffer = ReplayBuffer(self.config, Discrete=True)
+        plt_list = []
         while total_steps < self.config.max_train_steps:
             state = self.wsenv.reset()[0]
             done = False
+            episode_num += 1
             episode_reward = 0
+            train_info = []
             while not done:
                 return_value = self.agent.choose_action(state)  # Action and the corresponding log probability
                 action = return_value[0]
@@ -51,7 +59,6 @@ class GymRunner(Runner):
                 episode_reward += reward
                 if done and total_steps != self.config.max_train_steps:
                     dw = True
-                    print(self.local_rank,' Ep: ', total_steps, ' |', 'Ep_r: ', episode_reward)
                 else:
                     dw = False
                 replay_buffer.store(state, action, action_logprob, reward, state_, dw, done)
@@ -71,7 +78,17 @@ class GymRunner(Runner):
                     evaluate_rewards.append(evaluate_reward)
                     done = True
                     print("evaluate_num:{} \t evaluate_reward:{} \t".format(evaluate_num, evaluate_reward))
-
+            train_info.append(episode_reward)
+            if episode_num % 2 == 0: 
+                print("Episode:{}--train_info:{}".format(episode_num, np.mean(train_info[-10:])))
+                plt_list.append(np.mean(train_info[-10:]))
+                x = range(len(plt_list))
+                plt.plot(x, plt_list)
+                plt.title('Rewards-PPO')
+                plt.xlabel('Time')
+                plt.ylabel('Rewards')
+                plt.grid(True)
+                plt.savefig('PPOdiscrete-Rewards')
 
     def evaluate_policy(self, env):
         times = 3
@@ -98,6 +115,7 @@ class GymRunner(Runner):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("Hyperparameter Setting for PPO-discrete")
+    parser.add_argument("--print_interval", type=int, default=10, help="Print_interval")
     parser.add_argument("--max_train_steps", type=int, default=int(2e6), help=" Maximum number of training steps")
     parser.add_argument("--evaluate_freq", type=float, default=5e2, help="Evaluate the policy every 'evaluate_freq' steps")
     parser.add_argument("--save_freq", type=int, default=20, help="Save frequency")
@@ -105,9 +123,9 @@ if __name__ == '__main__':
     parser.add_argument("--mini_batch_size", type=int, default=6, help="Mini Batch size")
     parser.add_argument("--net_dims", default=(256, 128), help="The number of neurons in hidden layers of the neural network")
     parser.add_argument("--optimizer", default="Adam", help="Optimizer")
-    parser.add_argument("--lr_a", type=float, default=3e-4, help="Learning rate of actor")
-    parser.add_argument("--lr_c", type=float, default=3e-4, help="Learning rate of critic")
-    parser.add_argument("--gamma", type=float, default=0.99, help="Discount factor")
+    parser.add_argument("--lr_a", type=float, default=1e-3, help="Learning rate of actor")
+    parser.add_argument("--lr_c", type=float, default=1e-3, help="Learning rate of critic")
+    parser.add_argument("--gamma", type=float, default=0.98, help="Discount factor")
     parser.add_argument("--lamda", type=float, default=0.95, help="GAE parameter")
     parser.add_argument("--epsilon", type=float, default=0.2, help="PPO clip parameter")
     parser.add_argument("--K_epochs", type=int, default=10, help="epoch_num")
@@ -124,5 +142,5 @@ if __name__ == '__main__':
     parser.add_argument("--use_tanh", type=float, default=True, help="Trick 10: tanh activation function")
     args = parser.parse_args()
     #runners = wise_rl.makeRunner("runner", GymRunner, num=5,resource={"resources":{'custom_env':1}})
-    runners = wise_rl.make_runner("runner", GymRunner, args, num=5)
-    wise_rl.start_all_runner(runners)
+    runners = wise_rl.makeRunner("runner", GymRunner, args, num=2)
+    wise_rl.startAllRunner(runners)

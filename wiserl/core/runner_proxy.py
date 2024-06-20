@@ -6,7 +6,7 @@ class RunnerProxy(object):
     def __init__(self, runner):
         self.runner = runner
     
-    def get_runner():
+    def get_runner(self):
         return self.runner
 
     def run(self):

@@ -30,11 +30,11 @@ class DqnAgent(Agent):
     
     def choose_action(self, s):
         self.decay_epsilon()
-        s = torch.unsqueeze(torch.tensor(s, dtype=torch.float), 0)
+        s = torch.unsqueeze(torch.tensor(s, dtype=torch.float), 0).to(device)
         if np.random.uniform() > self.epsilon:
             # forward feed the observation and get q value for every actions
             actions_value = self.actor(s)
-            action = [np.argmax(actions_value.detach().numpy())][0]
+            action = [np.argmax(actions_value.detach().cpu().numpy())][0]
         else:
             action = np.random.randint(0, self.action_dim)
         return action
@@ -73,7 +73,6 @@ class DqnAgent(Agent):
         self.actor_optimizer.step() # execute back propagation for one step
         if self.sync == False:
             self._syncModel()
-
 
     def _sync_model(self):
         param = self.actor.state_dict()

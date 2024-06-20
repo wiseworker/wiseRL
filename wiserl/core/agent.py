@@ -28,7 +28,7 @@ class Agent(Actor):
         pass
 
     def get_all_agents(self, name):
-        agents =ray.get(self.registre.get_all_agent.remote(name))
+        agents =ray.get(self.registre.getAllAgent.remote(name))
         return agents
 
     def _fire(self,*args,**kwargs):

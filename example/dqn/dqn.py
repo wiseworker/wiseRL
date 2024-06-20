@@ -5,11 +5,13 @@ from wiserl.env import make_env, WsEnv
 import time
 import argparse
 import configparser
-
-wise_rl = WiseRL()
+use_ray = True
+if use_ray:
+    wise_rl = WiseRL()
+# wise_rl = WiseRL()
 class GymRunner(Runner):
     def __init__(self, args, local_rank=0):
-        self.local_rank = local_rank
+        self.rank = local_rank
         self.agent_name ="dqn_agent"
         self.env = make_env("CartPole-v1")
         self.config = args
@@ -17,11 +19,13 @@ class GymRunner(Runner):
         setattr(self.config, 'state_dim', self.env.state_dim)
         setattr(self.config, 'action_dim', self.env.action_dim)
         self.total_steps = 0
-        if local_rank == 0:
-            wise_rl.make_agent(name=self.agent_name, agent_class=DqnAgent, config=self.config)
-            self.agent = wise_rl.get_agent(self.agent_name)
+        if use_ray:
+            if local_rank == 0:
+                wise_rl.make_agent(name=self.agent_name, agent_class=DqnAgent, config=self.config)
+                self.agent = wise_rl.getAgent(self.agent_name)
+            self.agent = wise_rl.getAgent(self.agent_name)
         else:
-            self.agent = wise_rl.get_agent(self.agent_name)
+            self.agent = DqnAgent(self.config)
 
     def run(self):
         start = time.time()
@@ -41,8 +45,9 @@ class GymRunner(Runner):
                 if done:
                     r = -10
                     end = time.time()
-                    print(self.local_rank, 'time', round((end - start), 2), ' Ep: ', self.total_steps, ' |', 'Ep_r: ',
-                          round(ep_r, 2))
+                    if self.rank == 0 and self.total_steps % self.config.print_interval == 0:
+                        print(self.rank, 'time', round((end - start), 2), ' Ep: ', self.total_steps, ' |', 'Ep_r: ',
+                            round(ep_r, 2))
                     break
                 s = s_
                 self.total_steps += 1
@@ -50,6 +55,7 @@ class GymRunner(Runner):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("Hyperparameter Setting for PPO-discrete")
+    parser.add_argument("--print_interval", type=int, default=10, help="Print_interval")
     parser.add_argument("--max_train_steps", type=int, default=int(2e6), help=" Maximum number of training steps")
     parser.add_argument("--evaluate_freq", type=float, default=5e3, help="Evaluate the policy every 'evaluate_freq' steps")
     parser.add_argument("--save_freq", type=int, default=20, help="Save frequency")
@@ -71,5 +77,9 @@ if __name__ == '__main__':
     parser.add_argument("--set_adam_eps", type=float, default=True, help="Trick 9: set Adam epsilon=1e-5")
     parser.add_argument("--use_tanh", type=float, default=True, help="Trick 10: tanh activation function")
     args = parser.parse_args()
-    runners = wise_rl.make_runner("runner", GymRunner, args, num=5)
-    wise_rl.start_all_runner(runners)
+    if use_ray:
+        runners = wise_rl.makeRunner("runner", GymRunner, args, num=1)
+        wise_rl.startAllRunner(runners)
+    else:
+        runners = GymRunner(args)
+        runners.run()

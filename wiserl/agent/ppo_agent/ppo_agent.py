@@ -4,33 +4,19 @@ import numpy as np
 from wiserl.core.agent import Agent
 import torch.nn.functional as F
 from wiserl.agent.agent_utils import get_optimizer, make_actor_net, make_critic_net
-from  wiserl.agent.ppo_agent.ppo_config import init_params
+from wiserl.agent.ppo_agent.ppo_config import init_params
 import wiserl.agent.ppo_agent.ppo_config as config 
 from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 from torch.distributions import Categorical
-
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class PPOAgent(Agent):
-    def __init__(self, config, sync=True):
-        # if cfg != None:
-        #    init_params(cfg)
-        self.batch_size = config.batch_size
-        self.mini_batch_size = config.mini_batch_size
-        self.max_train_steps = config.max_train_steps
-        self.lr_a = config.lr_a  # Learning rate of actor
-        self.lr_c = config.lr_c  # Learning rate of critic
-        self.gamma = config.gamma  # Discount factor
-        self.lamda = config.lamda  # GAE parameter
-        self.epsilon = config.epsilon  # PPO clip parameter
-        self.K_epochs = config.K_epochs  # PPO parameter
-        self.entropy_coef = config.entropy_coef  # Entropy coefficient
-        self.set_adam_eps = config.set_adam_eps
-        self.use_grad_clip = config.use_grad_clip
-        self.use_lr_decay = config.use_lr_decay
-        self.use_reward_norm = config.use_reward_norm
-        self.use_adv_norm = config.use_adv_norm
+    def __init__(self, sync=True, **kwargs):
+        super().__init__(sync)
+        self.__dict__.update(kwargs)
+        # config.net_dims, config.state_dim, config.action_dims
 
-        self.actor = make_actor_net("dis_nn", config) # [dis_nn, nn]
-        self.critic = make_critic_net("nn", config)   # [nn]
+        self.actor = make_actor_net("ppo_nn", dict({"net_dims":self.net_dims,"state_dim":self.state_dim,"action_dim":self.action_dim})) # [dis_nn, nn]
+        self.critic = make_critic_net("ppo_nn", dict({"net_dims":self.net_dims,"state_dim":self.state_dim,"action_dim":self.action_dim}))   # [nn]
         if self.set_adam_eps:  # Trick 9: set Adam epsilon=1e-5
             self.optimizer_actor = torch.optim.Adam(self.actor.parameters(), lr=self.lr_a, eps=1e-5)
             self.optimizer_critic = torch.optim.Adam(self.critic.parameters(), lr=self.lr_c, eps=1e-5)
@@ -46,23 +32,29 @@ class PPOAgent(Agent):
         return a
 
     def choose_action(self, s):
-        s = torch.unsqueeze(torch.tensor(s, dtype=torch.float), 0)
+        s = torch.unsqueeze(torch.tensor(s, dtype=torch.float), 0).to(device)
         with torch.no_grad():
            a, p = self.actor.get_action(s)
-           return a.item(), p 
+           return a.item(), p.item()
 
     def compute_advantage(self, gamma, lmbda, td_delta):
-        td_delta = td_delta.detach().numpy()
+        td_delta = td_delta.detach().cpu().numpy()
         advantage_list = []
         advantage = 0.0
         for delta in td_delta[::-1]:
             advantage = gamma * lmbda * advantage + delta
             advantage_list.append(advantage)
         advantage_list.reverse()
-        return torch.tensor(advantage_list, dtype=torch.float)
+        return torch.tensor(advantage_list, dtype=torch.float).to(device)
 
     def update(self, replay_buffer, total_steps):
         s, a, a_logprob, r, s_, dw, done = replay_buffer.numpy_to_tensor()  # Get training data
+        s = s.to(device)
+        a = a.to(device)
+        a_logprob = a_logprob.to(device)
+        r = r.to(device)
+        s_ = s_.to(device)
+        dw = dw.to(device)
         """
             Calculate the advantage using GAE
             'dw=True' means dead or win, there is no next state s'
@@ -108,8 +100,10 @@ class PPOAgent(Agent):
                     torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
                 self.optimizer_actor.step()
 
-                v_s = self.critic(s[index])
+                v_s = self.critic(s[index]).unsqueeze(1)
+                
                 critic_loss = F.mse_loss(v_target[index], v_s)
+                #print("!!!:",v_target[index].shape,v_s.shape)
                 # Update critic
                 self.optimizer_critic.zero_grad()
                 critic_loss.backward()
@@ -127,3 +121,14 @@ class PPOAgent(Agent):
             p['lr'] = lr_a_now
         for p in self.optimizer_critic.param_groups:
             p['lr'] = lr_c_now
+
+    def _sync_model(self):
+        param = self.actor.state_dict()
+        if device.type != "cpu":
+            for name, mm in param.items():
+                param[name]= mm.cpu()
+        self._fire(param)
+    
+    def _update_model(self,param):
+        self.actor.load_state_dict(param)
+        self.actor_target.load_state_dict(param)
